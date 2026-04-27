@@ -17,7 +17,8 @@
   "dependencies": {
     "@cua-lark/core": "workspace:*",
     "@ui-tars/sdk": "^1.2.3",
-    "commander": "^12.0.0"
+    "commander": "^12.0.0",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

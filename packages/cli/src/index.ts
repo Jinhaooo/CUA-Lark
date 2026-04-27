@@ -1,5 +1,8 @@
 import { Command } from 'commander';
+import { config as loadDotenv } from 'dotenv';
 import { createExecCommand } from './commands/exec.js';
+
+loadDotenv();
 
 const program = new Command();
 

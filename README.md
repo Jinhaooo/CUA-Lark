@@ -46,13 +46,15 @@ pnpm build
 
 ## Configuration
 
-Create `.env` or export these variables in your shell:
+Create `.env` in the repository root. The CLI loads it automatically on startup:
 
 ```bash
 CUA_VLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 CUA_VLM_API_KEY=your-vlm-api-key
 CUA_VLM_MODEL=doubao-1.5-vision-pro
 ```
+
+You can also export the same variables in your shell. Shell environment variables take precedence over `.env` values.
 
 Optional variables reserved for later planner work:
 

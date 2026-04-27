@@ -1,0 +1,27 @@
+{
+  "name": "@cua-lark/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "cua-lark": "./bin/cua-lark.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsc --build --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cua-lark/core": "workspace:*",
+    "@ui-tars/sdk": "^1.2.3",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "~5.7.0",
+    "vitest": "^2.0.0"
+  }
+}

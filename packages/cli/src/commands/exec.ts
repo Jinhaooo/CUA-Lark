@@ -4,6 +4,33 @@ import { LarkOperator } from '@cua-lark/core';
 import { GUIAgent } from '@ui-tars/sdk';
 import { UITarsModel } from '@ui-tars/sdk/core';
 
+function redactSecrets(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value
+      .replace(/("apiKey"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2')
+      .replace(/("authorization"\s*:\s*")[^"]+(")/gi, '$1[REDACTED]$2')
+      .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[REDACTED]')
+      .replace(/(ark-[A-Za-z0-9-]{8})[A-Za-z0-9-]+/g, '$1-[REDACTED]');
+  }
+
+  if (value instanceof Error) {
+    value.message = redactSecrets(value.message) as string;
+    if (value.stack) {
+      value.stack = redactSecrets(value.stack) as string;
+    }
+    return value;
+  }
+
+  return value;
+}
+
+const redactingLogger = {
+  log: (...args: unknown[]) => console.log(...args.map(redactSecrets)),
+  info: (...args: unknown[]) => console.info(...args.map(redactSecrets)),
+  warn: (...args: unknown[]) => console.warn(...args.map(redactSecrets)),
+  error: (...args: unknown[]) => console.error(...args.map(redactSecrets)),
+};
+
 export function createExecCommand() {
   return new Command('exec')
     .description('Execute a natural language instruction using CUA-Lark')
@@ -45,6 +72,7 @@ export function createExecCommand() {
           operator,
           model,
           maxLoopCount,
+          logger: redactingLogger,
           onError: ({ error }) => {
             agentError = error;
           },

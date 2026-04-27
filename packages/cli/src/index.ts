@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { config as loadDotenv } from 'dotenv';
 import { createExecCommand } from './commands/exec.js';
 
-loadDotenv();
+loadDotenv({ quiet: true });
 
 const program = new Command();
 

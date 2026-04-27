@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LarkOperator, NotImplementedError } from '../LarkOperator';
 import type { ExecuteParams } from '@ui-tars/sdk/core';
 
+const mockExecute = vi.hoisted(() => vi.fn());
+
 vi.mock('@ui-tars/operator-nut-js', () => {
   return {
     NutJSOperator: vi.fn().mockImplementation(() => ({
@@ -9,7 +11,7 @@ vi.mock('@ui-tars/operator-nut-js', () => {
         base64: 'mock-screenshot-base64',
         status: 'success',
       }),
-      execute: vi.fn().mockResolvedValue({
+      execute: mockExecute.mockResolvedValue({
         status: 'success',
       }),
     })),
@@ -28,16 +30,16 @@ describe('LarkOperator', () => {
     it('should contain all 10 action types', () => {
       const actionSpaces = LarkOperator.MANUAL.ACTION_SPACES;
 
-      expect(actionSpaces).toContain('click(point: {x: number, y: number}) - Click on a specific point');
-      expect(actionSpaces).toContain('double_click(point: {x: number, y: number}) - Double click on a specific point');
-      expect(actionSpaces).toContain('right_click(point: {x: number, y: number}) - Right click on a specific point');
-      expect(actionSpaces).toContain('drag(start: {x: number, y: number}, end: {x: number, y: number}) - Drag from start to end point');
-      expect(actionSpaces).toContain('type(content: string) - Type text content, use \\n for Enter key');
-      expect(actionSpaces).toContain('hotkey(key: string) - Press hotkey combination like ctrl+c, cmd+v');
-      expect(actionSpaces).toContain('scroll(point: {x: number, y: number}, direction: "up" | "down" | "left" | "right") - Scroll at point in direction');
-      expect(actionSpaces).toContain('wait(time?: number) - Wait for specified time in seconds, default 5s');
-      expect(actionSpaces).toContain('finished() - Task completed successfully');
-      expect(actionSpaces).toContain('call_user(content?: string) - Request user interaction to continue');
+      expect(actionSpaces).toContain("click(start_box='[x1, y1, x2, y2]')");
+      expect(actionSpaces).toContain("left_double(start_box='[x1, y1, x2, y2]')");
+      expect(actionSpaces).toContain("right_single(start_box='[x1, y1, x2, y2]')");
+      expect(actionSpaces).toContain("drag(start_box='[x1, y1, x2, y2]', end_box='[x3, y3, x4, y4]')");
+      expect(actionSpaces).toContain("type(content='') #If you want to submit your input, use \"\\n\" at the end of `content`.");
+      expect(actionSpaces).toContain("hotkey(key='')");
+      expect(actionSpaces).toContain("scroll(start_box='[x1, y1, x2, y2]', direction='down or up or right or left')");
+      expect(actionSpaces).toContain('wait() #Sleep for 5s and take a screenshot to check for any changes.');
+      expect(actionSpaces).toContain('finished()');
+      expect(actionSpaces).toContain("call_user() # Submit the task and call the user when the task is unsolvable, or when you need the user's help.");
     });
 
     it('should have exactly 10 action entries', () => {
@@ -113,6 +115,34 @@ describe('LarkOperator', () => {
           await operator.execute(params);
         }).not.toThrow(`Unsupported action type: ${actionType}`);
       });
+    });
+
+    it('should recover malformed point click predictions as start_box', async () => {
+      const params: ExecuteParams = {
+        prediction: 'Thought: test\nAction: click(point: {x: 270 200})',
+        parsedPrediction: {
+          action_inputs: {},
+          reflection: null,
+          action_type: 'click',
+          thought: '',
+        },
+        screenWidth: 1440,
+        screenHeight: 900,
+        scaleFactor: 2,
+        factors: [1, 1],
+      };
+
+      await operator.execute(params);
+
+      expect(mockExecute).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parsedPrediction: expect.objectContaining({
+            action_inputs: {
+              start_box: '[0.1875, 0.222222, 0.1875, 0.222222]',
+            },
+          }),
+        }),
+      );
     });
   });
 });

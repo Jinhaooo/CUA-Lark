@@ -9,16 +9,16 @@ import type { Box } from '../types.js';
 export class LarkOperator {
   static MANUAL = {
     ACTION_SPACES: [
-      'click(point: {x: number, y: number}) - Click on a specific point',
-      'double_click(point: {x: number, y: number}) - Double click on a specific point',
-      'right_click(point: {x: number, y: number}) - Right click on a specific point',
-      'drag(start: {x: number, y: number}, end: {x: number, y: number}) - Drag from start to end point',
-      'type(content: string) - Type text content, use \\n for Enter key',
-      'hotkey(key: string) - Press hotkey combination like ctrl+c, cmd+v',
-      'scroll(point: {x: number, y: number}, direction: "up" | "down" | "left" | "right") - Scroll at point in direction',
-      'wait(time?: number) - Wait for specified time in seconds, default 5s',
-      'finished() - Task completed successfully',
-      'call_user(content?: string) - Request user interaction to continue',
+      "click(start_box='[x1, y1, x2, y2]')",
+      "left_double(start_box='[x1, y1, x2, y2]')",
+      "right_single(start_box='[x1, y1, x2, y2]')",
+      "drag(start_box='[x1, y1, x2, y2]', end_box='[x3, y3, x4, y4]')",
+      "hotkey(key='')",
+      "type(content='') #If you want to submit your input, use \"\\n\" at the end of `content`.",
+      "scroll(start_box='[x1, y1, x2, y2]', direction='down or up or right or left')",
+      'wait() #Sleep for 5s and take a screenshot to check for any changes.',
+      'finished()',
+      "call_user() # Submit the task and call the user when the task is unsolvable, or when you need the user's help.",
     ] as string[],
   };
 
@@ -29,7 +29,7 @@ export class LarkOperator {
   }
 
   async execute(params: ExecuteParams): Promise<ExecuteOutput> {
-    return this.nutjs.execute(params);
+    return this.nutjs.execute(normalizeExecuteParams(params));
   }
 
   async findByText(text: string): Promise<Box | null> {
@@ -43,6 +43,54 @@ export class LarkOperator {
   async waitForVisible(text: string, opts?: { timeoutMs?: number }): Promise<void> {
     throw new NotImplementedError('waitForVisible requires OCR, available from M3');
   }
+}
+
+function normalizeExecuteParams(params: ExecuteParams): ExecuteParams {
+  const actionInputs = params.parsedPrediction.action_inputs ?? {};
+  if ('start_box' in actionInputs) {
+    return params;
+  }
+
+  const point = parsePointFallback(params.prediction);
+  if (!point) {
+    return params;
+  }
+
+  const x = point.x > 1 ? point.x / params.screenWidth : point.x;
+  const y = point.y > 1 ? point.y / params.screenHeight : point.y;
+  const startBox = `[${formatCoord(x)}, ${formatCoord(y)}, ${formatCoord(x)}, ${formatCoord(y)}]`;
+
+  return {
+    ...params,
+    parsedPrediction: {
+      ...params.parsedPrediction,
+      action_inputs: {
+        ...actionInputs,
+        start_box: startBox,
+      },
+    },
+  };
+}
+
+function parsePointFallback(prediction: string): { x: number; y: number } | null {
+  const match = prediction.match(
+    /point\s*:\s*\{\s*x\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*,?\s*(?:y\s*:\s*)?([0-9]+(?:\.[0-9]+)?)\s*\}/i,
+  );
+  if (!match) {
+    return null;
+  }
+
+  const x = Number(match[1]);
+  const y = Number(match[2]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+}
+
+function formatCoord(value: number): string {
+  return Number(value.toFixed(6)).toString();
 }
 
 export class NotImplementedError extends Error {

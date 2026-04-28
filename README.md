@@ -2,11 +2,21 @@
 
 CUA-Lark is a TypeScript workspace for running computer-use workflows against the Lark/Feishu desktop client.
 
-The current implementation covers the M2 flow: a CLI can run YAML test cases, execute registered skills, write JSONL traces, and verify outcomes through a VLM-backed verifier. The lower-level `exec` command is still available for direct UI-TARS driven tasks.
+The current implementation covers the M3a flow: enhanced visual robustness with OCR integration, Action-level VLM verification (pre-action intent check + post-action result validation), benchmark CLI, and improved NL target skill templates.
 
 ## Current Status
 
-Implemented:
+Implemented (M3a):
+
+- **OCR Bridge Integration**: Python FastAPI server with PaddleOCR/RapidOCR dual-engine support
+- **ActionVerifier**: Pre-action intent verification + post-action result validation
+- **Visual Robustness**: Fuzzy text matching, OCR-based text location
+- **Benchmark CLI**: `cua-lark bench` command for performance baseline measurement
+- **NL Target Template**: Three-section prompt template (Goal + Distinctive Description + Completion Criteria)
+- **VLM Verification Fix**: Corrected image_url format for proper visual model input
+- **Skill-level Action Verification**: Per-skill `verify_actions` frontmatter configuration
+
+Implemented (M2):
 
 - `cua-lark exec <instruction>` CLI command.
 - `cua-lark run <glob>` CLI command for YAML test suites.
@@ -16,7 +26,7 @@ Implemented:
 - NutJS-based screenshot and action execution through `@ui-tars/operator-nut-js`.
 - OpenAI-compatible VLM configuration for `@ui-tars/sdk/core`.
 - Skill abstraction with `procedural`, `agent_driven`, and `recorded` kinds.
-- M2 IM skills for opening Lark, dismissing popups, searching a target chat, sending a message, and verifying it was sent.
+- IM skills for opening Lark, dismissing popups, searching a target chat, sending a message, and verifying it was sent.
 - Config-driven test targets through `configs/test-targets.yaml`.
 - JSONL trace output with screenshot attachment support.
 - VLM and composite verifier plumbing.
@@ -24,7 +34,6 @@ Implemented:
 
 Not implemented yet:
 
-- OCR text locator.
 - Accessibility/CDP locator.
 - Planner/LLM orchestration beyond the UI-TARS loop.
 - Calendar and Docs workflows.
@@ -33,6 +42,7 @@ Not implemented yet:
 
 - Node.js `>=20.0.0`
 - pnpm `>=9.0.0`
+- Python `>=3.8` (for OCR Bridge)
 - Lark or Feishu desktop client installed and running
 - A VLM endpoint compatible with the UI-TARS SDK/OpenAI-style API
 
@@ -48,6 +58,13 @@ corepack prepare pnpm@9.0.0 --activate
 ```powershell
 pnpm install
 pnpm build
+```
+
+Install OCR Bridge dependencies (Python):
+
+```powershell
+cd packages/ocr-bridge
+pip install -r requirements.txt
 ```
 
 ## Configuration
@@ -79,6 +96,21 @@ im:
     expected_member_count: 2
 ```
 
+Robustness configuration (`configs/robustness.yaml`):
+
+```yaml
+action_verify:
+  intent_threshold: 0.7
+  result_threshold: 0.6
+  exempt_action_types:
+    - wait
+    - finished
+    - call_user
+    - user_stop
+    - hotkey
+  default_for_agent_driven: false
+```
+
 ## Usage
 
 From the repository root:
@@ -87,11 +119,17 @@ From the repository root:
 node packages\cli\bin\cua-lark.js exec "open Lark and click the first chat"
 ```
 
-Run M2 YAML test cases:
+Run YAML test cases:
 
 ```powershell
 pnpm build
 node packages\cli\bin\cua-lark.js run "testcases/im/*.yaml"
+```
+
+Run benchmark:
+
+```powershell
+node packages\cli\bin\cua-lark.js bench "testcases/im/*.yaml" --suite m3a --runs 5 --label baseline
 ```
 
 After packaging or linking the CLI, the intended command is:
@@ -100,6 +138,7 @@ After packaging or linking the CLI, the intended command is:
 cua-lark exec "open Lark and click the first chat"
 cua-lark exec "open Lark" --max-loop 50
 cua-lark run "testcases/im/*.yaml"
+cua-lark bench "testcases/im/*.yaml" --suite m3a --runs 5 --label baseline
 ```
 
 ## Development
@@ -122,21 +161,46 @@ The project is a pnpm workspace:
 packages/
   core/
     src/model/       VLM environment and model client helpers
-    src/operator/    LarkOperator wrapper over NutJSOperator
-    src/preflight/   environment and process checks
+    src/operator/    LarkOperator wrapper over NutJSOperator + ActionVerifier
+    src/preflight/   environment and process checks + OCR Bridge health check
     src/skill/       skill definition, registry, and runner
-    src/suite/       YAML test loading and suite execution
+    src/suite/       YAML test loading and suite execution + RobustnessConfigLoader
     src/trace/       JSONL trace writer
-    src/verifier/    VLM and composite verification
+    src/verifier/    VLM, OCR, and composite verification
+    src/util/        Fuzzy text matching utilities
   skills/
-    _common/         shared app/popup skills
-    lark_im/         IM workflow skills
+    _common/         shared app/popup skills + PROMPT_TEMPLATE.md
+    lark_im/         IM workflow skills (NL target rewritten)
   cli/
-    src/commands/    exec and run commands
-configs/             environment-specific test targets
+    src/commands/    exec, run, and bench commands
+  ocr-bridge/        Python FastAPI OCR service
+configs/             environment-specific test targets + robustness config
 testcases/           YAML workflow test cases
 scripts/             M2 guard checks
 ```
+
+## Action Verification (M3a)
+
+ActionVerifier provides two levels of visual verification:
+
+1. **Pre-action Intent Verification**: Before executing an action, verifies that the target element is uniquely visible in the screenshot
+2. **Post-action Result Verification**: After executing an action, compares before/after screenshots to confirm expected UI changes
+
+Exempt action types (no verification): `wait`, `finished`, `call_user`, `user_stop`, `hotkey`
+
+Per-skill configuration via `SKILL.md` frontmatter:
+
+```yaml
+verify_actions: true  # Force action verification for this skill
+```
+
+## NL Target Template (M3a)
+
+Skills now use a three-section prompt template:
+
+1. **Goal**: What the skill intends to accomplish
+2. **Distinctive Description**: Unique identifying features of the target UI
+3. **Completion Criteria**: How to determine success
 
 ## Exit Codes
 
@@ -150,5 +214,5 @@ scripts/             M2 guard checks
 ## Notes
 
 - The `UI-TARS-Desktop` source tree is only a reference and is not required to run this project.
-- The current Windows smoke test reaches the GUIAgent path, captures a screenshot, and attempts a model call when VLM variables are present.
 - Real task execution requires a valid VLM endpoint and a running Lark/Feishu client.
+- OCR Bridge runs as a Python subprocess and is automatically started during preflight checks.

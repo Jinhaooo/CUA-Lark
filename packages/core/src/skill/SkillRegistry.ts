@@ -75,7 +75,7 @@ export class SkillRegistry implements SkillRegistryInterface {
     }
 
     const implPath = this.resolveImportPath(rootDir, skillDir, implFile);
-    const module = await import(pathToFileURL(implPath).href);
+    const module = await import(decodeURI(pathToFileURL(implPath).href));
     const skill = module.default;
     
     if (!skill || typeof skill !== 'object') {
@@ -84,6 +84,10 @@ export class SkillRegistry implements SkillRegistryInterface {
     
     if (skill.name !== frontmatter.name) {
       throw new Error(`Skill name mismatch: ${skill.name} !== ${frontmatter.name} in ${skillFile}`);
+    }
+    
+    if (frontmatter.verify_actions !== undefined) {
+      skill.verify_actions = frontmatter.verify_actions;
     }
     
     this.register(skill);

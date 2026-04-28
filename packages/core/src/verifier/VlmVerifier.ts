@@ -26,7 +26,13 @@ export class VlmVerifier implements Verifier {
             role: 'user',
             content: [
               { type: 'text', text: prompt },
-              { type: 'image', image: snapshot.screenshotBase64 }
+              { 
+                type: 'image_url', 
+                image_url: { 
+                  url: 'data:image/png;base64,' + snapshot.screenshotBase64,
+                  detail: 'high'
+                } 
+              }
             ]
           }
         ]

@@ -5,7 +5,9 @@ import type {
   ExecuteParams,
   ExecuteOutput,
 } from '@ui-tars/sdk/core';
-import type { Box } from '../types.js';
+import type { Box, OcrClient } from '../types.js';
+import type { ActionVerifier, PredictionParsed, ActionVerifyConfig } from './ActionVerifier.js';
+import { ActionIntentLowConfidence, SilentActionFailure } from './ActionVerifier.js';
 
 export class LarkOperator {
   static MANUAL = {
@@ -25,6 +27,9 @@ export class LarkOperator {
 
   private nutjs = new NutJSOperator();
   private executingAction = false;
+  private ocrClient: OcrClient | null = null;
+  private actionVerifier: ActionVerifier | null = null;
+  private actionVerifyEnabled = false;
 
   async screenshot(): Promise<ScreenshotOutput> {
     return this.nutjs.screenshot();
@@ -32,11 +37,82 @@ export class LarkOperator {
 
   async execute(params: ExecuteParams): Promise<ExecuteOutput> {
     this.executingAction = true;
+    let beforeShot: Buffer | null = null;
+
     try {
-      return await this.nutjs.execute(normalizeExecuteParams(params));
+      const parsedPrediction = this.parsePrediction(params);
+
+      if (this.actionVerifier && this.actionVerifyEnabled) {
+        beforeShot = await this.captureScreenshot();
+        await this.verifyBeforeAction(parsedPrediction, beforeShot);
+      }
+
+      const result = await this.nutjs.execute(normalizeExecuteParams(params));
+
+      if (this.actionVerifier && this.actionVerifyEnabled && beforeShot) {
+        const afterShot = await this.captureScreenshot();
+        await this.verifyAfterAction(parsedPrediction, beforeShot, afterShot);
+      }
+
+      return result;
     } finally {
       this.executingAction = false;
     }
+  }
+
+  private parsePrediction(params: ExecuteParams): PredictionParsed {
+    const actionType = params.parsedPrediction.action_type ?? '';
+    const actionInputs = params.parsedPrediction.action_inputs ?? {};
+    const thought = params.prediction ?? '';
+
+    return { action_type: actionType, action_inputs: actionInputs, thought };
+  }
+
+  private async captureScreenshot(): Promise<Buffer> {
+    const screenshot = await this.screenshot();
+    return Buffer.from(screenshot.base64, 'base64');
+  }
+
+  private async verifyBeforeAction(parsedPrediction: PredictionParsed, beforeShot: Buffer): Promise<void> {
+    if (!this.actionVerifier) return;
+
+    if (this.actionVerifier.isExempt(parsedPrediction.action_type)) {
+      return;
+    }
+
+    const config = this.getActionVerifyConfig();
+    const result = await this.actionVerifier.beforeAction(parsedPrediction, beforeShot);
+
+    if (!result.uniquely_visible && result.confidence >= config.intent_threshold) {
+      throw new ActionIntentLowConfidence(result.confidence, result.reasoning);
+    }
+  }
+
+  private async verifyAfterAction(
+    parsedPrediction: PredictionParsed,
+    beforeShot: Buffer,
+    afterShot: Buffer
+  ): Promise<void> {
+    if (!this.actionVerifier) return;
+
+    if (this.actionVerifier.isExempt(parsedPrediction.action_type)) {
+      return;
+    }
+
+    const config = this.getActionVerifyConfig();
+    const result = await this.actionVerifier.afterAction(parsedPrediction, beforeShot, afterShot);
+
+    if (!result.as_expected && result.confidence >= config.result_threshold) {
+      throw new SilentActionFailure(result.confidence, result.reasoning);
+    }
+  }
+
+  private getActionVerifyConfig(): ActionVerifyConfig {
+    return {
+      intent_threshold: 0.7,
+      result_threshold: 0.6,
+      exempt_action_types: ['wait', 'finished', 'call_user', 'user_stop', 'hotkey'],
+    };
   }
 
   isExecuting(): boolean {
@@ -48,8 +124,41 @@ export class LarkOperator {
     return { x: position.x, y: position.y };
   }
 
+  setOcrClient(ocrClient: OcrClient | null): void {
+    this.ocrClient = ocrClient;
+  }
+
+  setActionVerifier(verifier: ActionVerifier | null): void {
+    this.actionVerifier = verifier;
+  }
+
+  setActionVerifyEnabled(enabled: boolean): void {
+    this.actionVerifyEnabled = enabled;
+  }
+
   async findByText(text: string): Promise<Box | null> {
-    return null;
+    if (!this.ocrClient) {
+      return null;
+    }
+
+    try {
+      const screenshot = await this.screenshot();
+      const imageBuffer = Buffer.from(screenshot.base64, 'base64');
+      const result = await this.ocrClient.locate(imageBuffer, text);
+
+      if (!result) {
+        return null;
+      }
+
+      return {
+        x: result.x1,
+        y: result.y1,
+        width: result.x2 - result.x1,
+        height: result.y2 - result.y1,
+      };
+    } catch {
+      return null;
+    }
   }
 
   async findByA11y(role: string, name: string): Promise<Box | null> {
@@ -57,7 +166,22 @@ export class LarkOperator {
   }
 
   async waitForVisible(text: string, opts?: { timeoutMs?: number }): Promise<void> {
-    throw new NotImplementedError('waitForVisible requires OCR, available from M3');
+    if (!this.ocrClient) {
+      throw new NotImplementedError('waitForVisible requires OCR, available from M3');
+    }
+
+    const timeoutMs = opts?.timeoutMs ?? 5000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      const box = await this.findByText(text);
+      if (box) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    throw new Error(`waitForVisible timed out after ${timeoutMs}ms for text: ${text}`);
   }
 }
 
@@ -168,8 +292,6 @@ function applyOptionalSafeBounds(
   box: [number, number, number, number],
   params: ExecuteParams,
 ): [number, number, number, number] {
-  // Temporary desktop-safety guard. Leave unset for full-computer control.
-  // Set CUA_LARK_SAFE_BOUNDS="left,top,right,bottom" in screen pixels to clamp pointer targets.
   const bounds = parseSafeBounds(process.env.CUA_LARK_SAFE_BOUNDS);
   if (!bounds) {
     return box;

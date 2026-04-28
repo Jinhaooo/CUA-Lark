@@ -32,13 +32,16 @@ describe('Verifier', () => {
     verifier = new Verifier(mockModel);
   });
 
-  test('should throw error for ocr kind', async () => {
+  test('should return failure for ocr kind when OCR client is unavailable', async () => {
     const spec: VerifySpec = {
       kind: 'ocr',
       contains: 'test'
     };
 
-    await expect(verifier.run(spec, mockContext)).rejects.toThrow('待 M3+ 接入：kind=ocr');
+    await expect(verifier.run(spec, mockContext)).resolves.toMatchObject({
+      passed: false,
+      reason: 'OCR client not available'
+    });
   });
 
   test('should throw error for pixel kind', async () => {

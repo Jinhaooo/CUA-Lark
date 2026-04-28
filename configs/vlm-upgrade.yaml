@@ -1,0 +1,59 @@
+models:
+  default:
+    base_url: ${CUA_VLM_BASE_URL}
+    api_key: ${CUA_VLM_API_KEY}
+    model: ${CUA_VLM_MODEL}
+    timeout: 60000
+
+  # Future VLM models (placeholder for upgrade)
+  candidates:
+    - name: doubao-2.0-vision-pro
+      base_url: https://ark.cn-beijing.volces.com/api/v3
+      capabilities:
+        - vision
+        - reasoning
+        - json_mode
+        - high_resolution
+      recommended_for:
+        - action_verification
+        - visual_reasoning
+        - complex_scene_analysis
+
+    - name: gpt-4o
+      base_url: https://api.openai.com/v1
+      capabilities:
+        - vision
+        - reasoning
+        - json_mode
+        - high_resolution
+      recommended_for:
+        - general_purpose
+        - action_verification
+
+    - name: qwen-vl-max
+      base_url: https://dashscope.aliyuncs.com/api/text/image
+      capabilities:
+        - vision
+        - reasoning
+        - json_mode
+      recommended_for:
+        - chinese_ocr
+        - action_verification
+
+capabilities:
+  required:
+    - vision
+    - json_mode
+  
+  preferred:
+    - high_resolution
+    - reasoning
+
+upgrade_paths:
+  current: doubao-1.5-vision-pro
+  target: doubao-2.0-vision-pro
+  migration_notes:
+    - Update API endpoint if changed
+    - Review prompt templates for new model capabilities
+    - Adjust confidence thresholds
+    - Test action verification accuracy

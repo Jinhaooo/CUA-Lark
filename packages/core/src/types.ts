@@ -91,7 +91,16 @@ export interface TraceWriter {
   saveScreenshot(runId: string, traceId: string, png: Buffer): Promise<string>;
 }
 
-export type OcrClient = unknown;
+export interface OcrToken {
+  text: string;
+  box: [number, number, number, number];
+  confidence: number;
+}
+
+export interface OcrClient {
+  recognize(image: Buffer, region?: { x1: number; y1: number; x2: number; y2: number }): Promise<OcrToken[]>;
+  locate(image: Buffer, target: string): Promise<{ x1: number; y1: number; x2: number; y2: number } | null>;
+}
 
 export interface Context {
   operator: any;
@@ -99,7 +108,7 @@ export interface Context {
   registry: SkillRegistry;
   model: any;
   trace: TraceWriter;
-  ocr: OcrClient;
+  ocr: OcrClient | null;
   logger: Logger;
   config: Config;
   snapshot(): Promise<Snapshot>;

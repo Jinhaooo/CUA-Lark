@@ -12,9 +12,16 @@ const skill: Skill<any, any> = defineSkill({
   execute: async (ctx, params) => {
     const { name_pattern } = params;
     
-    // 使用GUIAgent搜索并打开会话
     await ctx.agent.run(
-      `在飞书侧边栏搜索栏中输入 "${name_pattern}"，找到名称包含该字段的会话并点击进入。完成判据：右侧消息区已切换到该会话（会话标题包含 ${name_pattern}）。`,
+      `目标：在飞书 IM 主面板搜索 "${name_pattern}" 并打开匹配的会话。
+区分性描述：
+  1. 点击侧边栏顶部的搜索按钮（放大镜图标，位于个人头像下方第一个图标）。
+     不要点击：底部的「设置」（齿轮图标）、「联系人」（人形图标）、「会议」（视频摄像机图标）。
+  2. 在搜索框输入 "${name_pattern}" 后，会出现下拉结果列表。
+     选择"群组"分类下的卡片（左侧是群头像+成员数标记），不要选"消息"分类下的消息片段（左侧是发送者头像+消息预览文本）。
+完成判据：
+  - 主窗口右侧消息区已切换，会话标题文本完全包含 "${name_pattern}"
+  - 输入框、消息列表都已渲染完成（不在 loading 状态）`,
     );
     
     return { success: true, name_pattern };

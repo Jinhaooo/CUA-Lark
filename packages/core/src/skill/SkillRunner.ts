@@ -2,16 +2,22 @@ import { SkillError } from '../types.js';
 import type { SkillRegistry, TraceWriter, Context, SkillCall, SkillRunResult } from '../types.js';
 import { Verifier } from '../verifier/Verifier.js';
 import { ulid } from 'ulid';
+import type { ActionVerifier } from '../operator/ActionVerifier.js';
 
 export class SkillRunner {
   private registry: SkillRegistry;
   private verifier: Verifier;
   private trace: TraceWriter;
+  private actionVerifier: ActionVerifier | null = null;
 
   constructor(registry: SkillRegistry, verifier: Verifier, trace: TraceWriter) {
     this.registry = registry;
     this.verifier = verifier;
     this.trace = trace;
+  }
+
+  setActionVerifier(actionVerifier: ActionVerifier | null): void {
+    this.actionVerifier = actionVerifier;
   }
 
   async run(call: SkillCall, ctx: Context, parentTraceId?: string): Promise<SkillRunResult> {
@@ -23,7 +29,6 @@ export class SkillRunner {
     const traceId = ulid();
     const testRunId = ctx.trace.beginRun();
 
-    // 记录技能开始事�?
     await this.trace.write({
       id: traceId,
       test_run_id: testRunId,
@@ -36,13 +41,11 @@ export class SkillRunner {
     });
 
     try {
-      // 执行重试逻辑
       const maxRetries = call.retryPolicy?.times || 1;
       const backoffMs = call.retryPolicy?.backoffMs || 0;
 
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-          // 检查前置条�?
           if (skill.preconditions) {
             for (const precondition of skill.preconditions) {
               const result = await precondition(ctx);
@@ -52,18 +55,35 @@ export class SkillRunner {
             }
           }
 
-          // 执行技�?
-          const result = await skill.execute(ctx, call.params);
+          const actionVerificationEnabled = this.enableActionVerificationIfAvailable(skill, ctx);
+          let result: unknown;
+          try {
+            result = await skill.execute(ctx, call.params);
+          } finally {
+            if (actionVerificationEnabled) {
+              ctx.operator.setActionVerifyEnabled(false);
+            }
+          }
 
-          // 验证技能结�?
           if (skill.verify) {
             const verifyResult = await skill.verify(ctx, call.params, result);
+            await this.trace.write({
+              id: ulid(),
+              test_run_id: testRunId,
+              parent_id: traceId,
+              kind: 'verify',
+              name: `${skill.name}_verify`,
+              status: verifyResult.passed ? 'passed' : 'failed',
+              started_at: Date.now(),
+              ended_at: Date.now(),
+              payload: { result: verifyResult }
+            });
+
             if (!verifyResult.passed) {
               throw new SkillError('verify_failed', verifyResult.reason);
             }
           }
 
-          // 记录技能成功事�?
           await this.trace.write({
             id: ulid(),
             test_run_id: testRunId,
@@ -82,13 +102,10 @@ export class SkillRunner {
             traceId
           };
         } catch (error) {
-          // 最后一次尝试失败，处理fallback
           if (attempt === maxRetries - 1) {
-            // 检查是否有fallback并且没有达到fallback深度限制
             if (skill.fallback && !ctx.__fallbackDepth) {
               ctx.logger.warn(`Falling back to ${skill.fallback}`);
-              
-              // 记录fallback事件
+
               await this.trace.write({
                 id: ulid(),
                 test_run_id: testRunId,
@@ -101,7 +118,6 @@ export class SkillRunner {
                 payload: { error: error instanceof Error ? error.message : String(error), fallback: skill.fallback }
               });
 
-              // 执行fallback技能，设置fallback深度
               const fallbackCtx = { ...ctx, __fallbackDepth: 1 };
               const fallbackResult = await this.run(
                 { skill: skill.fallback, params: call.params },
@@ -114,26 +130,22 @@ export class SkillRunner {
                 fallbackUsed: skill.fallback
               };
             } else {
-              // 没有fallback或已达到深度限制
               throw error;
             }
           }
 
-          // 重试前等�?
           if (backoffMs > 0) {
             await new Promise(resolve => setTimeout(resolve, backoffMs));
           }
         }
       }
 
-      // 理论上不会到达这�?
       throw new SkillError('unknown', 'Skill execution failed');
     } catch (error) {
       if (error instanceof SkillError && error.message.startsWith('Skill not found:')) {
         throw error;
       }
       await this.trace.write({
-
         id: ulid(),
         test_run_id: testRunId,
         parent_id: traceId,
@@ -163,5 +175,30 @@ export class SkillRunner {
     } finally {
       await this.trace.endRun(testRunId);
     }
+  }
+
+  private shouldVerifyActions(skill: { verify_actions?: boolean; kind: string }): boolean {
+    if (skill.verify_actions !== undefined) {
+      return skill.verify_actions;
+    }
+
+    return skill.kind === 'agent_driven';
+  }
+
+  private enableActionVerificationIfAvailable(skill: { verify_actions?: boolean; kind: string }, ctx: Context): boolean {
+    if (!this.shouldVerifyActions(skill) || !this.actionVerifier || !ctx.operator) {
+      return false;
+    }
+
+    if (
+      typeof ctx.operator.setActionVerifier !== 'function' ||
+      typeof ctx.operator.setActionVerifyEnabled !== 'function'
+    ) {
+      return false;
+    }
+
+    ctx.operator.setActionVerifier(this.actionVerifier);
+    ctx.operator.setActionVerifyEnabled(true);
+    return true;
   }
 }

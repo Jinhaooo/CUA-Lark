@@ -16,6 +16,7 @@ export interface Skill<P = unknown, R = unknown> {
   execute: (ctx: Context, params: P) => Promise<R>;
   verify?: (ctx: Context, params: P, result: R) => Promise<VerifyResult>;
   uses?: string[];
+  verify_actions?: boolean;
 }
 
 export interface SkillDef<P = unknown, R = unknown> {
@@ -29,4 +30,5 @@ export interface SkillDef<P = unknown, R = unknown> {
   execute: (ctx: Context, params: P) => Promise<R>;
   verify?: (ctx: Context, params: P, result: R) => Promise<VerifyResult>;
   uses?: string[];
+  verify_actions?: boolean;
 }

@@ -1,0 +1,10 @@
+action_verify:
+  intent_threshold: 0.7
+  result_threshold: 0.6
+  exempt_action_types:
+    - wait
+    - finished
+    - call_user
+    - user_stop
+    - hotkey
+  default_for_agent_driven: false

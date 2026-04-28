@@ -10,6 +10,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
+    },
+    "./skill/defineSkill": {
+      "types": "./dist/skill/defineSkill.d.ts",
+      "import": "./dist/skill/defineSkill.js",
+      "require": "./dist/skill/defineSkill.js"
+    },
+    "./preflight": {
+      "types": "./dist/preflight/index.d.ts",
+      "import": "./dist/preflight/index.js",
+      "require": "./dist/preflight/index.js"
     }
   },
   "scripts": {
@@ -19,12 +29,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ui-tars/sdk": "^1.2.3",
     "@ui-tars/operator-nut-js": "^1.2.3",
+    "@ui-tars/sdk": "^1.2.3",
+    "glob": "^11.0.3",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0",
     "openai": "^4.0.0",
+    "ulid": "^2.3.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "typescript": "~5.7.0",
     "vitest": "^2.0.0"

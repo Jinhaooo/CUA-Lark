@@ -1,0 +1,22 @@
+id: im_03_send_and_verify
+title: 搜索目标会话、发送消息并验证
+tags: [im, smoke]
+timeoutSeconds: 60
+expectations:
+  - 右侧消息区切换到目标会话
+  - 成功发送文本消息
+  - 验证消息发送成功
+skillCalls:
+  - skill: _common.ensure_app_open
+    params: {}
+  - skill: _common.dismiss_popup
+    params: {}
+  - skill: lark_im.search_contact
+    params:
+      name_pattern: ${config:im.test_group.name_pattern}
+  - skill: lark_im.send_message
+    params:
+      text: "测试消息：Hello CUA-Lark!"
+  - skill: lark_im.verify_message_sent
+    params:
+      text: "测试消息：Hello CUA-Lark!"

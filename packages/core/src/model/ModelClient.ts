@@ -5,7 +5,7 @@ import type {
   TextRequest,
   TextResponse,
   ModelClient,
-} from './types';
+} from './types.js';
 import type { ModelEnv, VlmConfig } from './env.js';
 
 export class ModelClientImpl implements ModelClient {

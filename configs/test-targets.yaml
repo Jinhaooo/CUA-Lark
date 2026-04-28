@@ -1,0 +1,4 @@
+im:
+  test_group:
+    name_pattern: "CUA-Lark-Test"
+    expected_member_count: 2

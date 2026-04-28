@@ -1,6 +1,7 @@
 import type { Skill } from './types.js';
-import { readdirSync, readFileSync } from 'fs';
-import { join, extname } from 'path';
+import { existsSync, readdirSync, readFileSync } from 'fs';
+import { dirname, extname, join, relative, resolve } from 'path';
+import { pathToFileURL } from 'url';
 import matter from 'gray-matter';
 import type { SkillRegistry as SkillRegistryInterface } from '../types.js';
 
@@ -26,7 +27,7 @@ export class SkillRegistry implements SkillRegistryInterface {
     const skillFiles = this.findSkillFiles(rootDir);
     
     for (const skillFile of skillFiles) {
-      await this.loadSkillFromFile(skillFile);
+      await this.loadSkillFromFile(rootDir, skillFile);
     }
   }
 
@@ -49,8 +50,8 @@ export class SkillRegistry implements SkillRegistryInterface {
     return files;
   }
 
-  private async loadSkillFromFile(skillFile: string): Promise<void> {
-    const skillDir = join(skillFile, '..');
+  private async loadSkillFromFile(rootDir: string, skillFile: string): Promise<void> {
+    const skillDir = dirname(skillFile);
     const content = readFileSync(skillFile, 'utf8');
     const { data: frontmatter } = matter(content);
     
@@ -73,8 +74,8 @@ export class SkillRegistry implements SkillRegistryInterface {
       throw new Error(`No skill implementation found in ${skillDir}`);
     }
 
-    const implPath = join(skillDir, implFile);
-    const module = await import(implPath);
+    const implPath = this.resolveImportPath(rootDir, skillDir, implFile);
+    const module = await import(pathToFileURL(implPath).href);
     const skill = module.default;
     
     if (!skill || typeof skill !== 'object') {
@@ -86,5 +87,18 @@ export class SkillRegistry implements SkillRegistryInterface {
     }
     
     this.register(skill);
+  }
+
+  private resolveImportPath(rootDir: string, skillDir: string, implFile: string): string {
+    const sourcePath = resolve(skillDir, implFile);
+
+    if (extname(implFile) === '.ts') {
+      const compiledPath = resolve(rootDir, 'dist', relative(rootDir, skillDir), implFile.replace(/\.ts$/, '.js'));
+      if (existsSync(compiledPath)) {
+        return compiledPath;
+      }
+    }
+
+    return sourcePath;
   }
 }

@@ -81,7 +81,10 @@ export class SuiteRunner {
 
     const executionPromise = async () => {
       for (const call of testCase.skillCalls!) {
-        await this.skillRunner.run(call, this.context);
+        const result = await this.skillRunner.run(call, this.context);
+        if (!result.passed) {
+          throw result.error || new Error(`Skill failed: ${call.skill}`);
+        }
       }
     };
 

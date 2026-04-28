@@ -14,7 +14,6 @@ const skill: Skill<any, any> = defineSkill({
     // 使用GUIAgent确保飞书IM主面板可见
     await ctx.agent.run(
       '确保飞书IM主面板可见，完成判据：左侧会话列表与右侧消息区都呈现',
-      { maxLoopCount: 5 }
     );
     
     return { success: true };

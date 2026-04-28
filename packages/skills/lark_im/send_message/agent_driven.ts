@@ -15,7 +15,6 @@ const skill: Skill<any, any> = defineSkill({
     // 使用GUIAgent发送消息
     await ctx.agent.run(
       `在当前打开会话的输入框输入 "${text}"，按回车发送。完成判据：输入框已清空，消息列表底部出现一条新消息，文本为 "${text}"。`,
-      { maxLoopCount: 5 }
     );
     
     return { success: true, text };

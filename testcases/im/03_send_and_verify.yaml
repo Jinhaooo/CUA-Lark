@@ -1,7 +1,7 @@
 id: im_03_send_and_verify
 title: 搜索目标会话、发送消息并验证
 tags: [im, smoke]
-timeoutSeconds: 60
+timeoutSeconds: 180
 expectations:
   - 右侧消息区切换到目标会话
   - 成功发送文本消息

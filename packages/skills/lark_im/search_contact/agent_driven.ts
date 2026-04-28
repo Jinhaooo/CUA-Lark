@@ -15,7 +15,6 @@ const skill: Skill<any, any> = defineSkill({
     // 使用GUIAgent搜索并打开会话
     await ctx.agent.run(
       `在飞书侧边栏搜索栏中输入 "${name_pattern}"，找到名称包含该字段的会话并点击进入。完成判据：右侧消息区已切换到该会话（会话标题包含 ${name_pattern}）。`,
-      { maxLoopCount: 5 }
     );
     
     return { success: true, name_pattern };

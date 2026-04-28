@@ -18,6 +18,12 @@ vi.mock('@ui-tars/operator-nut-js', () => {
   };
 });
 
+vi.mock('@computer-use/nut-js', () => ({
+  mouse: {
+    getPosition: vi.fn().mockResolvedValue({ x: 0, y: 0 }),
+  },
+}));
+
 describe('LarkOperator', () => {
   let operator: LarkOperator;
 
@@ -138,8 +144,88 @@ describe('LarkOperator', () => {
         expect.objectContaining({
           parsedPrediction: expect.objectContaining({
             action_inputs: {
-              start_box: '[0.1875, 0.222222, 0.1875, 0.222222]',
+              start_box: '[0.27, 0.2, 0.27, 0.2]',
             },
+          }),
+        }),
+      );
+    });
+
+    it.each([
+      [
+        'Action: click(start_box=\'[x1, y1, x2, y2]\', start_box=\'[100, 163]\')',
+        '[0.1, 0.163, 0.1, 0.163]',
+      ],
+      [
+        'Action: click(start_box=\'[x520, 850, 750, 875]\')',
+        '[0.52, 0.85, 0.75, 0.875]',
+      ],
+      [
+        'Action: click(start_box=\'<point>666 972</point>\')',
+        '[0.666, 0.972, 0.666, 0.972]',
+      ],
+      [
+        'Action: click(start_box=\'[x875, 219]\')',
+        '[0.875, 0.219, 0.875, 0.219]',
+      ],
+    ])('should normalize model coordinate format %#', async (prediction, expectedStartBox) => {
+      const params: ExecuteParams = {
+        prediction,
+        parsedPrediction: {
+          action_inputs: {
+            start_box: '[null,0.219,null,0.219]',
+          },
+          reflection: null,
+          action_type: 'click',
+          thought: '',
+        },
+        screenWidth: 1440,
+        screenHeight: 900,
+        scaleFactor: 2,
+        factors: [1, 1],
+      };
+
+      await operator.execute(params);
+
+      expect(mockExecute).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parsedPrediction: expect.objectContaining({
+            action_inputs: expect.objectContaining({
+              start_box: expectedStartBox,
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('should clamp coordinates to optional Lark safe bounds', async () => {
+      process.env.CUA_LARK_SAFE_BOUNDS = '100,100,800,700';
+      const params: ExecuteParams = {
+        prediction: 'Action: click(start_box=\'[950, 850]\')',
+        parsedPrediction: {
+          action_inputs: {},
+          reflection: null,
+          action_type: 'click',
+          thought: '',
+        },
+        screenWidth: 1000,
+        screenHeight: 1000,
+        scaleFactor: 1,
+        factors: [1, 1],
+      };
+
+      try {
+        await operator.execute(params);
+      } finally {
+        delete process.env.CUA_LARK_SAFE_BOUNDS;
+      }
+
+      expect(mockExecute).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parsedPrediction: expect.objectContaining({
+            action_inputs: expect.objectContaining({
+              start_box: '[0.8, 0.7, 0.8, 0.7]',
+            }),
           }),
         }),
       );

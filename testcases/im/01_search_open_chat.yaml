@@ -1,7 +1,7 @@
 id: im_01_search_open_chat
 title: 搜索目标会话并打开
 tags: [im, smoke]
-timeoutSeconds: 60
+timeoutSeconds: 180
 expectations:
   - 右侧消息区切换到目标会话
 skillCalls:

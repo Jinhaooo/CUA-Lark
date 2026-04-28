@@ -1,27 +1,33 @@
 # CUA-Lark
 
-CUA-Lark is a TypeScript workspace for running a computer-use agent against the Lark/Feishu desktop client.
+CUA-Lark is a TypeScript workspace for running computer-use workflows against the Lark/Feishu desktop client.
 
-The current implementation provides a working CLI entrypoint, environment preflight checks, and integration with the UI-TARS SDK plus NutJS desktop operator. It is an early M1 implementation focused on proving that `cua-lark exec` can load, capture the screen, call a configured vision model, and execute parsed GUI actions.
+The current implementation covers the M2 flow: a CLI can run YAML test cases, execute registered skills, write JSONL traces, and verify outcomes through a VLM-backed verifier. The lower-level `exec` command is still available for direct UI-TARS driven tasks.
 
 ## Current Status
 
 Implemented:
 
 - `cua-lark exec <instruction>` CLI command.
+- `cua-lark run <glob>` CLI command for YAML test suites.
 - Required VLM environment validation.
 - Windows and macOS Lark/Feishu process preflight checks.
 - UI-TARS `GUIAgent` integration.
 - NutJS-based screenshot and action execution through `@ui-tars/operator-nut-js`.
 - OpenAI-compatible VLM configuration for `@ui-tars/sdk/core`.
+- Skill abstraction with `procedural`, `agent_driven`, and `recorded` kinds.
+- M2 IM skills for opening Lark, dismissing popups, searching a target chat, sending a message, and verifying it was sent.
+- Config-driven test targets through `configs/test-targets.yaml`.
+- JSONL trace output with screenshot attachment support.
+- VLM and composite verifier plumbing.
 - Workspace build, typecheck, and Vitest test setup.
 
 Not implemented yet:
 
 - OCR text locator.
 - Accessibility/CDP locator.
-- Higher-level Lark workflow skills.
 - Planner/LLM orchestration beyond the UI-TARS loop.
+- Calendar and Docs workflows.
 
 ## Requirements
 
@@ -64,6 +70,15 @@ CUA_LLM_API_KEY=your-llm-api-key
 CUA_LLM_MODEL=doubao-1.5-pro
 ```
 
+Test targets are configured in `configs/test-targets.yaml`. Test cases should reference target data through config variables instead of hardcoding chat names:
+
+```yaml
+im:
+  test_group:
+    name_pattern: "Your test group"
+    expected_member_count: 2
+```
+
 ## Usage
 
 From the repository root:
@@ -72,11 +87,19 @@ From the repository root:
 node packages\cli\bin\cua-lark.js exec "open Lark and click the first chat"
 ```
 
+Run M2 YAML test cases:
+
+```powershell
+pnpm build
+node packages\cli\bin\cua-lark.js run "testcases/im/*.yaml"
+```
+
 After packaging or linking the CLI, the intended command is:
 
 ```bash
 cua-lark exec "open Lark and click the first chat"
 cua-lark exec "open Lark" --max-loop 50
+cua-lark run "testcases/im/*.yaml"
 ```
 
 ## Development
@@ -87,6 +110,12 @@ pnpm build
 pnpm test
 ```
 
+Run the M2 guard checks:
+
+```powershell
+C:\msys64\usr\bin\bash.exe scripts/check-do-not-m2.sh
+```
+
 The project is a pnpm workspace:
 
 ```text
@@ -95,8 +124,18 @@ packages/
     src/model/       VLM environment and model client helpers
     src/operator/    LarkOperator wrapper over NutJSOperator
     src/preflight/   environment and process checks
+    src/skill/       skill definition, registry, and runner
+    src/suite/       YAML test loading and suite execution
+    src/trace/       JSONL trace writer
+    src/verifier/    VLM and composite verification
+  skills/
+    _common/         shared app/popup skills
+    lark_im/         IM workflow skills
   cli/
-    src/commands/    exec command
+    src/commands/    exec and run commands
+configs/             environment-specific test targets
+testcases/           YAML workflow test cases
+scripts/             M2 guard checks
 ```
 
 ## Exit Codes

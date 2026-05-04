@@ -1,5 +1,5 @@
 import { Verifier } from '../Verifier';
-import { Context, VerifySpec } from '../../types';
+import type { Context, VerifySpec } from '../../types';
 
 describe('Verifier', () => {
   let verifier: Verifier;
@@ -10,7 +10,7 @@ describe('Verifier', () => {
     mockModel = {
       chatVision: jest.fn()
     };
-    
+
     mockContext = {
       snapshot: jest.fn(),
       operator: {},
@@ -29,7 +29,7 @@ describe('Verifier', () => {
       runSkill: jest.fn()
     } as any;
 
-    verifier = new Verifier(mockModel);
+    verifier = new Verifier();
   });
 
   test('should return failure for ocr kind when OCR client is unavailable', async () => {
@@ -54,13 +54,16 @@ describe('Verifier', () => {
     await expect(verifier.run(spec, mockContext)).rejects.toThrow('待 M3+ 接入：kind=pixel');
   });
 
-  test('should throw error for a11y kind', async () => {
+  test('should return failure for a11y kind when UIA client is unavailable', async () => {
     const spec: VerifySpec = {
       kind: 'a11y',
       role: 'button',
       name: 'test'
     };
 
-    await expect(verifier.run(spec, mockContext)).rejects.toThrow('待 M3+ 接入：kind=a11y');
+    await expect(verifier.run(spec, mockContext)).resolves.toMatchObject({
+      passed: false,
+      reason: 'UIA client not available'
+    });
   });
 });

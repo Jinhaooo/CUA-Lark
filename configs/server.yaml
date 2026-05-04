@@ -1,0 +1,18 @@
+host: 127.0.0.1
+port: 7878
+sseHeartbeatMs: 15000
+httpClient:
+  timeoutMs: 30000
+  retries: 2
+  circuitBreaker:
+    failureThreshold: 5
+    resetMs: 30000
+streaming:
+  chunkIdleTimeoutMs: 15000
+taskQueue:
+  maxSize: 100
+trace:
+  dbPath: ./traces/cua-lark.db
+cors:
+  allowedOrigins:
+    - http://localhost:5173

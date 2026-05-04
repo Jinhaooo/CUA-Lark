@@ -1,0 +1,14 @@
+id: im_01_search_open_chat
+title: 搜索目标会话并打开（legacy）
+tags: [im, smoke, legacy]
+timeoutSeconds: 180
+expectations:
+  - 右侧消息区切换到目标会话
+skillCalls:
+  - skill: _common.ensure_app_open
+    params: {}
+  - skill: _common.dismiss_popup
+    params: {}
+  - skill: lark_im.search_contact
+    params:
+      name_pattern: ${config:im.test_group.name_pattern}

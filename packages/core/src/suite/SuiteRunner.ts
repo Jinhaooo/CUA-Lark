@@ -1,19 +1,25 @@
+import { glob } from 'glob';
 import type { Context } from '../types.js';
 import type { SkillRunner } from '../skill/SkillRunner.js';
 import type { SuiteResult, TestCaseFile } from './types.js';
 import { YamlLoader } from './yamlLoader.js';
 import { ConfigLoader } from './ConfigLoader.js';
-import { glob } from 'glob';
+import type { SkillPlanner } from '../_deprecated/planner/SkillPlanner.js';
 
 export class SuiteRunner {
   private skillRunner: SkillRunner;
   private context: Context;
   private yamlLoader: YamlLoader;
+  private skillPlanner: SkillPlanner | null = null;
 
   constructor(skillRunner: SkillRunner, context: Context) {
     this.skillRunner = skillRunner;
     this.context = context;
     this.yamlLoader = new YamlLoader(new ConfigLoader());
+  }
+
+  setSkillPlanner(planner: SkillPlanner): void {
+    this.skillPlanner = planner;
   }
 
   async run(globPattern: string): Promise<SuiteResult> {
@@ -22,52 +28,106 @@ export class SuiteRunner {
     const startTime = Date.now();
 
     for (const file of testFiles) {
-      const caseResult = await this.runTestCase(file);
-      results.push(caseResult);
+      results.push(await this.runTestCase(file));
     }
 
-    const endTime = Date.now();
-    const passed = results.filter(r => r.passed).length;
-    const failed = results.filter(r => !r.passed).length;
+    const durationMs = Date.now() - startTime;
+    const passed = results.filter((result) => result.passed).length;
+    const skipped = results.filter((result) => result.skipped).length;
+    const failed = results.length - passed - skipped;
 
     return {
       total: results.length,
       passed,
       failed,
-      durationMs: endTime - startTime,
-      cases: results
+      skipped,
+      durationMs,
+      cases: results,
     };
   }
 
   private async runTestCase(filePath: string): Promise<SuiteResult['cases'][0]> {
     const startTime = Date.now();
-    
-    try {
-      const testCase = this.yamlLoader.load(filePath);
-      
-      if (testCase.skillCalls) {
-        await this.runSkillCalls(testCase);
-      } else if (testCase.instruction) {
-        throw new Error('SkillPlanner is M3+ feature');
-      } else {
-        throw new Error('Test case must have either skillCalls or instruction');
-      }
+    let testCase: TestCaseFile | null = null;
+    let mainError: unknown = null;
 
-      const endTime = Date.now();
+    try {
+      testCase = this.yamlLoader.load(filePath);
+      testCase.file = filePath;
+
+      await this.runPhaseSkillCalls(testCase, 'setup');
+      await this.runMain(testCase);
+
       return {
-        id: testCase.id,
+        id: testCase.id ?? filePath,
         passed: true,
-        durationMs: endTime - startTime
+        durationMs: Date.now() - startTime,
       };
     } catch (error) {
-      const endTime = Date.now();
+      mainError = error;
       return {
-        id: filePath,
+        id: testCase?.id ?? filePath,
         passed: false,
+        skipped: this.isSetupError(error),
         error: error instanceof Error ? error.message : String(error),
-        durationMs: endTime - startTime
+        durationMs: Date.now() - startTime,
       };
+    } finally {
+      if (testCase) {
+        await this.runPhaseSkillCalls(testCase, 'teardown', mainError);
+      }
     }
+  }
+
+  private async runMain(testCase: TestCaseFile): Promise<void> {
+    if (testCase.skillCalls) {
+      await this.runSkillCalls(testCase);
+      return;
+    }
+
+    if (testCase.instruction) {
+      if (!this.skillPlanner) {
+        throw new Error('SkillPlanner not configured');
+      }
+
+      const calls = await this.skillPlanner.plan(testCase.instruction, {
+        testCaseId: testCase.id,
+        configValues: this.context.config,
+      });
+      await this.runSkillCalls({ ...testCase, skillCalls: calls });
+      return;
+    }
+
+    throw new Error('Test case must have either skillCalls or instruction');
+  }
+
+  private async runPhaseSkillCalls(
+    testCase: TestCaseFile,
+    phase: 'setup' | 'teardown',
+    mainError?: unknown,
+  ): Promise<void> {
+    const calls = phase === 'setup' ? testCase.setup_skills : testCase.teardown_skills;
+    if (!calls || calls.length === 0) {
+      return;
+    }
+
+    try {
+      await this.runSkillCalls({ ...testCase, skillCalls: calls });
+    } catch (error) {
+      if (phase === 'setup') {
+        throw new Error(`Setup failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      this.context.logger.warn(
+        `Teardown failed for ${testCase.id ?? testCase.file ?? 'unknown test case'}:`,
+        error instanceof Error ? error.message : String(error),
+        mainError ? '(main test had already failed)' : '',
+      );
+    }
+  }
+
+  private isSetupError(error: unknown): boolean {
+    return error instanceof Error && error.message.startsWith('Setup failed:');
   }
 
   private async runSkillCalls(testCase: TestCaseFile): Promise<void> {

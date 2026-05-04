@@ -1,53 +1,95 @@
+/**
+ * ConfigLoader - 配置加载器
+ * 
+ * 负责加载测试目标配置文件
+ */
+
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { resolve } from 'path';
 import yaml from 'js-yaml';
-import { z } from 'zod';
 
-const configSchema = z.object({
-  im: z.object({
-    test_group: z.object({
-      name_pattern: z.string(),
-      expected_member_count: z.number().int().positive()
-    })
-  })
-});
-
-export type Config = z.infer<typeof configSchema>;
-
+/**
+ * 配置加载器类
+ */
 export class ConfigLoader {
   private configPath: string;
+  private explicitConfigPath: boolean;
 
-  constructor(configPath: string = './configs/test-targets.yaml') {
-    this.configPath = configPath;
+  /**
+   * 构造函数
+   * @param configPath - 配置文件路径（可选）
+   */
+  constructor(configPath?: string) {
+    this.configPath = configPath ?? resolve('./configs/test-targets.yaml');
+    this.explicitConfigPath = configPath !== undefined;
   }
 
-  load(): Config {
+  /**
+   * 加载配置
+   * @returns 配置对象
+   */
+  load(): Record<string, unknown> {
     try {
-      const content = readFileSync(this.configPath, 'utf8');
-      const config = yaml.load(content) as unknown;
-      const parsedConfig = configSchema.parse(config);
-      return parsedConfig;
+      const content = readFileSync(this.configPath, 'utf-8');
+      const config = yaml.load(content) as Record<string, unknown>;
+      this.validate(config);
+      return config;
     } catch (error) {
-      throw new Error(`Failed to load config: ${error instanceof Error ? error.message : String(error)}`);
+      if (this.explicitConfigPath) {
+        throw error;
+      }
+      return {};
     }
   }
 
-  get<T>(path: string): T {
+  /**
+   * 获取IM测试目标配置
+   * @returns IM配置对象
+   */
+  getImTargets(): Record<string, unknown> {
     const config = this.load();
-    return this.getByPath(config, path) as T;
+    return (config.im as Record<string, unknown>) ?? {};
   }
 
-  private getByPath(obj: any, path: string): any {
-    const parts = path.split('.');
-    let result = obj;
+  /**
+   * 获取特定测试目标
+   * @param key - 目标键名
+   * @returns 目标配置或undefined
+   */
+  getTarget(key: string): unknown {
+    const config = this.load();
+    return config[key];
+  }
+
+  /**
+   * 通过点路径获取配置值
+   * @param path - 点分隔的路径（如 'im.test_group.name_pattern'）
+   * @returns 配置值或undefined
+   */
+  get(path: string): unknown {
+    const config = this.load();
+    const keys = path.split('.');
+    let value: unknown = config;
     
-    for (const part of parts) {
-      if (result === undefined || result === null) {
+    for (const key of keys) {
+      if (typeof value === 'object' && value !== null && key in value) {
+        value = (value as Record<string, unknown>)[key];
+      } else {
         throw new Error(`Config path not found: ${path}`);
       }
-      result = result[part];
     }
     
-    return result;
+    return value;
+  }
+
+  private validate(config: unknown): void {
+    if (!config || typeof config !== 'object') {
+      throw new Error('Invalid config: root must be an object');
+    }
+
+    const im = (config as Record<string, unknown>).im;
+    if (im !== undefined && (typeof im !== 'object' || im === null)) {
+      throw new Error('Invalid config: im must be an object');
+    }
   }
 }

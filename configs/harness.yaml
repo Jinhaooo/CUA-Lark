@@ -1,0 +1,10 @@
+maxLoopIterations: 30
+maxTokensPerSkill: 120000
+messageHistoryLimit: 5
+loopDetectionThreshold: 3
+vlmModel: ""
+toolDefaultTimeoutMs:
+  perceive: 10000
+  act: 5000
+  verify: 15000
+  meta: 2000

@@ -1,47 +1,5 @@
-import { defineSkill, type Skill } from '@cua-lark/core';
+import { defineSkill, fuzzyContains, type Skill } from '@cua-lark/core';
 import { z } from 'zod';
-
-function fuzzyDistance(a: string, b: string): number {
-  const aLen = a.length;
-  const bLen = b.length;
-
-  if (aLen === 0) return bLen;
-  if (bLen === 0) return aLen;
-
-  const prevRow: number[] = new Array(bLen + 1);
-  for (let j = 0; j <= bLen; j++) {
-    prevRow[j] = j;
-  }
-
-  for (let i = 1; i <= aLen; i++) {
-    const currRow: number[] = new Array(bLen + 1);
-    currRow[0] = i;
-    for (let j = 1; j <= bLen; j++) {
-      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
-      const prevJ = prevRow[j];
-      const currJMinus1 = currRow[j - 1];
-      const prevJMinus1 = prevRow[j - 1];
-      currRow[j] = Math.min(
-        (prevJ ?? 0) + 1,
-        (currJMinus1 ?? 0) + 1,
-        (prevJMinus1 ?? 0) + cost
-      );
-    }
-    for (let j = 0; j <= bLen; j++) {
-      prevRow[j] = currRow[j] ?? 0;
-    }
-  }
-
-  return prevRow[bLen] ?? 0;
-}
-
-function fuzzyContains(haystack: string, needle: string): boolean {
-  if (needle.length <= 1) return haystack.includes(needle);
-  for (let i = 0; i <= haystack.length - needle.length; i++) {
-    if (fuzzyDistance(haystack.substring(i, i + needle.length), needle) <= 1) return true;
-  }
-  return false;
-}
 
 const skill: Skill<any, any> = defineSkill({
   name: 'lark_im.verify_message_sent',

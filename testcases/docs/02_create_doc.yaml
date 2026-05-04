@@ -1,0 +1,12 @@
+id: docs_02_create_with_title
+title: Create Doc With Title
+tags: [docs, m3c]
+timeoutSeconds: 240
+instruction: "Create a Lark document in ${config:docs.test_folder_name} and set its title to \"${config:docs.test_doc_prefix}Title\"."
+expectations:
+  - The document title is visible.
+teardown_skills:
+  - skill: _common.cleanup_docs
+    params:
+      folderName: "${config:docs.test_folder_name}"
+      titlePrefix: "${config:docs.test_doc_prefix}"

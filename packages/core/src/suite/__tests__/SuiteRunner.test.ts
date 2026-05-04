@@ -132,7 +132,145 @@ instruction: "Test instruction"
     expect(result.total).toBe(1);
     expect(result.passed).toBe(0);
     expect(result.failed).toBe(1);
-    expect(result.cases[0].error).toBe('SkillPlanner is M3+ feature');
+    expect(result.cases[0].error).toBe('SkillPlanner not configured');
+  });
+
+  test('should run setup and warn on teardown failure without overriding main result', async () => {
+    writeFileSync(join(testDir, 'test-teardown.yaml'), `
+id: test_teardown
+title: Teardown warning
+tags: [test]
+timeoutSeconds: 10
+setup_skills:
+  - skill: setup-skill
+    params: {}
+skillCalls:
+  - skill: main-skill
+    params: {}
+teardown_skills:
+  - skill: teardown-skill
+    params: {}
+`);
+
+    const mockSkillRunner = {
+      run: jest.fn().mockImplementation((call) => {
+        if (call.skill === 'teardown-skill') {
+          return Promise.resolve({
+            passed: false,
+            skillName: call.skill,
+            traceId: 'teardown-trace',
+            error: new Error('teardown failed'),
+          });
+        }
+
+        return Promise.resolve({ passed: true, skillName: call.skill, traceId: `${call.skill}-trace` });
+      }),
+    } as any;
+
+    const mockContext = {
+      operator: {},
+      agent: {},
+      registry: {},
+      model: {},
+      trace: {
+        beginRun: jest.fn(),
+        write: jest.fn(),
+        endRun: jest.fn(),
+        saveScreenshot: jest.fn(),
+      },
+      ocr: null,
+      logger: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      },
+      config: {},
+      snapshot: jest.fn(),
+      runSkill: jest.fn(),
+    } as Context;
+
+    const runner = new SuiteRunner(mockSkillRunner, mockContext);
+    const result = await runner.run(`${testDir}/*.yaml`);
+
+    expect(result.total).toBe(1);
+    expect(result.passed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(mockSkillRunner.run).toHaveBeenNthCalledWith(1, { skill: 'setup-skill', params: {} }, mockContext);
+    expect(mockSkillRunner.run).toHaveBeenNthCalledWith(2, { skill: 'main-skill', params: {} }, mockContext);
+    expect(mockSkillRunner.run).toHaveBeenNthCalledWith(3, { skill: 'teardown-skill', params: {} }, mockContext);
+    expect(mockContext.logger.warn).toHaveBeenCalledWith(
+      'Teardown failed for test_teardown:',
+      'teardown failed',
+      '',
+    );
+  });
+
+  test('should mark setup failure as skipped and still run teardown', async () => {
+    writeFileSync(join(testDir, 'test-setup-fail.yaml'), `
+id: test_setup_fail
+title: Setup failure
+tags: [test]
+timeoutSeconds: 10
+setup_skills:
+  - skill: setup-skill
+    params: {}
+skillCalls:
+  - skill: main-skill
+    params: {}
+teardown_skills:
+  - skill: teardown-skill
+    params: {}
+`);
+
+    const mockSkillRunner = {
+      run: jest.fn().mockImplementation((call) => {
+        if (call.skill === 'setup-skill') {
+          return Promise.resolve({
+            passed: false,
+            skillName: call.skill,
+            traceId: 'setup-trace',
+            error: new Error('setup failed'),
+          });
+        }
+
+        return Promise.resolve({ passed: true, skillName: call.skill, traceId: `${call.skill}-trace` });
+      }),
+    } as any;
+
+    const mockContext = {
+      operator: {},
+      agent: {},
+      registry: {},
+      model: {},
+      trace: {
+        beginRun: jest.fn(),
+        write: jest.fn(),
+        endRun: jest.fn(),
+        saveScreenshot: jest.fn(),
+      },
+      ocr: null,
+      logger: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      },
+      config: {},
+      snapshot: jest.fn(),
+      runSkill: jest.fn(),
+    } as Context;
+
+    const runner = new SuiteRunner(mockSkillRunner, mockContext);
+    const result = await runner.run(`${testDir}/*.yaml`);
+
+    expect(result.total).toBe(1);
+    expect(result.passed).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.cases[0].skipped).toBe(true);
+    expect(mockSkillRunner.run).toHaveBeenCalledWith({ skill: 'teardown-skill', params: {} }, mockContext);
+    expect(mockSkillRunner.run).not.toHaveBeenCalledWith({ skill: 'main-skill', params: {} }, mockContext);
   });
 
   test('should throw error for test cases with neither skillCalls nor instruction', async () => {

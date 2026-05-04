@@ -1,24 +1,23 @@
 ---
 name: lark_im.search_contact
 kind: agent_driven
-description: 搜索联系人或群组并打开会话
+description: Search a Lark contact or group and open the matching chat.
 verify_actions: true
 params_schema:
   name_pattern: string
+verifyDifficulty:
+  uia: low
+  ocr: low
+  vlm: low
 ---
 
-# 搜索联系人
+# Search Contact
 
-## 功能说明
-- 在飞书侧边栏搜索栏中输入关键词
-- 找到名称包含该字段的会话
-- 点击进入会话
+Use Lark global search to find the contact or group whose name contains `name_pattern`, then open that chat.
 
-## 区分性描述
-1. 搜索按钮位于侧边栏顶部，是放大镜图标，位于个人头像下方第一个图标
-2. 不要点击：底部的「设置」（齿轮图标）、「联系人」（人形图标）、「会议」（视频摄像机图标）
-3. 搜索结果中选择"群组"分类下的卡片（左侧是群头像+成员数标记），不要选"消息"分类下的消息片段
+When processing an existing message, you can right-click the target message first, then inspect the context menu to decide the next operation.
 
-## 完成判据
-- 主窗口右侧消息区已切换，会话标题文本完全包含搜索关键词
-- 输入框、消息列表都已渲染完成（不在 loading 状态）
+Completion criteria:
+- The main conversation area has switched to the matching chat.
+- The chat title contains `name_pattern`.
+- The message list and input box are visible.

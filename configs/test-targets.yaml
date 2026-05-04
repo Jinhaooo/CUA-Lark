@@ -2,3 +2,11 @@ im:
   test_group:
     name_pattern: "CUA-Lark-Test"
     expected_member_count: 2
+
+calendar:
+  test_event_prefix: "CUA-Test-Calendar-"
+  default_time_hint: "今天下午两点到三点"
+
+docs:
+  test_folder_name: "CUA-Lark-Test-Folder"
+  test_doc_prefix: "CUA-Test-Doc-"

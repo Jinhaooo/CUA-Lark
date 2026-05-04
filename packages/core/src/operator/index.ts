@@ -1,4 +1,4 @@
 export { LarkOperator, NotImplementedError } from './LarkOperator.js';
 export { ActionVerifier, ActionIntentLowConfidence, SilentActionFailure } from './ActionVerifier.js';
-export { OcrLocator } from './locators/OcrLocator.js';
-export { CdpLocator } from './locators/CdpLocator.js';
+export { HybridLocator } from './HybridLocator.js';
+export type { LocateSpec, LocateResult, LocateStrategy } from './HybridLocator.js';

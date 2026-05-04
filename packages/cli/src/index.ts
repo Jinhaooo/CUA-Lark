@@ -3,6 +3,8 @@ import { config as loadDotenv } from 'dotenv';
 import { createExecCommand } from './commands/exec.js';
 import { createRunCommand } from './commands/run.js';
 import { createBenchCommand } from './commands/bench.js';
+import { createVerifyM3Command } from './commands/verify-m3.js';
+import { createPromptCommand } from './commands/prompt.js';
 
 loadDotenv({ quiet: true });
 
@@ -16,5 +18,7 @@ program
 program.addCommand(createExecCommand());
 program.addCommand(createRunCommand());
 program.addCommand(createBenchCommand());
+program.addCommand(createVerifyM3Command());
+program.addCommand(createPromptCommand());
 
 program.parse(process.argv);

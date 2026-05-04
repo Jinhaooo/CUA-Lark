@@ -1,0 +1,11 @@
+id: calendar_02_create_event_basic
+title: Create Calendar Event
+tags: [calendar, m3c]
+timeoutSeconds: 240
+instruction: "Create a Lark Calendar event titled \"${config:calendar.test_event_prefix}Basic\" using the default time selected by Lark."
+expectations:
+  - The event is created and saved with the requested title.
+teardown_skills:
+  - skill: _common.cleanup_calendar_events
+    params:
+      titlePrefix: "${config:calendar.test_event_prefix}"

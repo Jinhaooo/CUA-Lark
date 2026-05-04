@@ -1,2 +1,9 @@
 packages:
   - 'packages/*'
+  - 'packages/cli'
+  - 'packages/core'
+  - 'packages/server'
+  - 'packages/dashboard'
+  - 'packages/skills'
+  - 'packages/ocr-bridge'
+  - 'packages/uia-bridge'

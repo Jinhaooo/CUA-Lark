@@ -1,0 +1,11 @@
+id: calendar_03_create_event_with_time
+title: Create Calendar Event With Time
+tags: [calendar, m3c]
+timeoutSeconds: 300
+instruction: "Create a Lark Calendar event titled \"${config:calendar.test_event_prefix}Timed\" for ${config:calendar.default_time_hint}."
+expectations:
+  - The event is created with the requested title and time range.
+teardown_skills:
+  - skill: _common.cleanup_calendar_events
+    params:
+      titlePrefix: "${config:calendar.test_event_prefix}"

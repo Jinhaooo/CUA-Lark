@@ -1,0 +1,10 @@
+id: im_04_send_and_recall_latest
+title: Prompt-driven send and recall latest message
+tags: [im, smoke, prompt_planning, m3c]
+timeoutSeconds: 300
+instruction: "Open the Lark IM group ${config:im.test_group.name_pattern}, send the message \"CUA-Test-Recall-Once\", then recall the message just sent."
+expectations:
+  - The planner generates skill calls from the instruction.
+  - The target group is opened from global search.
+  - The message is sent with Enter.
+  - Only the just-sent matching message is recalled or deleted.

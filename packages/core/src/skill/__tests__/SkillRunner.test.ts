@@ -1,7 +1,7 @@
 import { SkillRunner } from '../SkillRunner';
 import { SkillRegistry, Context, SkillCall, VerifyResult } from '../../types';
 import { Verifier } from '../../verifier/Verifier';
-import { JsonlTraceWriter } from '../../trace/JsonlTraceWriter';
+import { JsonlTraceWriter } from '../../_deprecated/trace/JsonlTraceWriter';
 import { defineSkill } from '../defineSkill';
 import { z } from 'zod';
 
@@ -32,7 +32,11 @@ describe('SkillRunner', () => {
     } as any;
 
     mockContext = {
-      operator: {},
+      operator: {
+        setActionVerifier: jest.fn(),
+        setActionVerifyEnabled: jest.fn(),
+        setTraceContext: jest.fn()
+      },
       agent: {},
       registry: mockRegistry,
       model: {},

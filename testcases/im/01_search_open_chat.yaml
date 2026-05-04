@@ -1,14 +1,13 @@
 id: im_01_search_open_chat
-title: 搜索目标会话并打开
-tags: [im, smoke]
+title: Prompt-driven search target chat and open it
+tags: [im, smoke, prompt_planning, m3c]
 timeoutSeconds: 180
+instruction: "Open the Lark IM group ${config:im.test_group.name_pattern}."
 expectations:
-  - 右侧消息区切换到目标会话
-skillCalls:
-  - skill: _common.ensure_app_open
-    params: {}
-  - skill: _common.dismiss_popup
-    params: {}
-  - skill: lark_im.search_contact
+  - The planner generates skill calls from the instruction.
+  - The message area switches to the target chat.
+teardown_skills:
+  - skill: _common.cleanup_im_messages
     params:
-      name_pattern: ${config:im.test_group.name_pattern}
+      chatPattern: "${config:im.test_group.name_pattern}"
+      contentPattern: "CUA-Test-"

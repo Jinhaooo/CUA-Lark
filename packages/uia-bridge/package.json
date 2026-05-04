@@ -1,0 +1,16 @@
+{
+  "name": "@cua-lark/uia-bridge",
+  "version": "1.0.0",
+  "description": "UIA bridge for CUA-Lark using PowerShell",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && powershell -NoProfile -Command \"Copy-Item src/server.ps1 dist/server.ps1 -Force\"",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

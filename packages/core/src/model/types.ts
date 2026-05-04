@@ -18,6 +18,7 @@ export interface VisionRequest {
   temperature?: number;
   max_tokens?: number;
   response_format?: { type: 'text' | 'json_object' };
+  signal?: AbortSignal;
 }
 
 export interface TokenUsage {
@@ -42,6 +43,7 @@ export interface TextRequest {
   temperature?: number;
   max_tokens?: number;
   response_format?: { type: 'text' | 'json_object' };
+  signal?: AbortSignal;
 }
 
 export interface TextResponse {
@@ -52,4 +54,6 @@ export interface TextResponse {
 export interface ModelClient {
   chatVision(req: VisionRequest): Promise<VisionResponse>;
   chatText(req: TextRequest): Promise<TextResponse>;
+  chatVisionStream(req: VisionRequest): AsyncIterable<import('./streaming').StreamChunk>;
+  chatTextStream(req: TextRequest): AsyncIterable<import('./streaming').StreamChunk>;
 }

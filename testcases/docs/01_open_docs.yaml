@@ -1,0 +1,12 @@
+id: docs_01_create_doc
+title: Create Doc
+tags: [docs, smoke, m3c]
+timeoutSeconds: 240
+instruction: "Create a new Lark document in ${config:docs.test_folder_name} titled \"${config:docs.test_doc_prefix}Basic\"."
+expectations:
+  - A new document is created.
+teardown_skills:
+  - skill: _common.cleanup_docs
+    params:
+      folderName: "${config:docs.test_folder_name}"
+      titlePrefix: "${config:docs.test_doc_prefix}"

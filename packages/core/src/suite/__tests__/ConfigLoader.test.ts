@@ -49,11 +49,7 @@ im:
   });
 
   test('should throw error for invalid config', () => {
-    writeFileSync(testConfigPath, `
-im:
-  test_group:
-    name_pattern: "CUA-Lark-Test"
-`);
+    writeFileSync(testConfigPath, `im: [`);
 
     const loader = new ConfigLoader(testConfigPath);
     expect(() => loader.load()).toThrow();

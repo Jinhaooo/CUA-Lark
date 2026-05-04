@@ -1,0 +1,18 @@
+id: im_02_send_text
+title: 搜索目标会话并发送文本消息（legacy）
+tags: [im, smoke, legacy]
+timeoutSeconds: 180
+expectations:
+  - 右侧消息区切换到目标会话
+  - 成功发送文本消息
+skillCalls:
+  - skill: _common.ensure_app_open
+    params: {}
+  - skill: _common.dismiss_popup
+    params: {}
+  - skill: lark_im.search_contact
+    params:
+      name_pattern: ${config:im.test_group.name_pattern}
+  - skill: lark_im.send_message
+    params:
+      text: "测试消息：Hello CUA-Lark!"

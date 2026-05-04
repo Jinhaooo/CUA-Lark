@@ -1,0 +1,11 @@
+id: calendar_01_open_only
+title: Open Calendar
+tags: [calendar, smoke, m3c]
+timeoutSeconds: 180
+instruction: "Open Lark Calendar."
+expectations:
+  - Calendar main view is visible.
+teardown_skills:
+  - skill: _common.cleanup_calendar_events
+    params:
+      titlePrefix: "${config:calendar.test_event_prefix}"

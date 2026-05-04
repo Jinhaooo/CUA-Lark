@@ -119,18 +119,31 @@ describe('ModelClient', () => {
   });
 
   describe('chatText', () => {
-    it('should throw NotImplementedError', async () => {
+    it('should call OpenAI-compatible chat completions and return text response', async () => {
       const client = new ModelClientImpl({
         baseURL: 'https://api.test.com',
         apiKey: 'test-key',
         model: 'test-model',
       });
 
-      await expect(
-        client.chatText({
+      const response = await client.chatText({
+        messages: [{ role: 'user', content: 'test' }],
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'test-model',
           messages: [{ role: 'user', content: 'test' }],
         }),
-      ).rejects.toThrow('chatText is M3+ feature');
+      );
+      expect(response).toEqual({
+        content: 'test response',
+        usage: {
+          promptTokens: 10,
+          completionTokens: 20,
+          totalTokens: 30,
+        },
+      });
     });
   });
 });

@@ -33,6 +33,9 @@ export function fuzzyDistance(a: string, b: string): number {
 }
 
 export function fuzzyContains(haystack: string, needle: string): boolean {
+  haystack = normalizeComparableText(haystack);
+  needle = normalizeComparableText(needle);
+
   const needleLen = needle.length;
   const haystackLen = haystack.length;
 
@@ -63,4 +66,12 @@ export function fuzzyContains(haystack: string, needle: string): boolean {
   }
 
   return false;
+}
+
+function normalizeComparableText(value: string): string {
+  return value
+    .replace(/：/g, ':')
+    .replace(/\s*:\s*/g, ':')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

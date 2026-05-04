@@ -20,6 +20,27 @@
       "types": "./dist/preflight/index.d.ts",
       "import": "./dist/preflight/index.js",
       "require": "./dist/preflight/index.js"
+    },
+    "./src/trace/SqliteTraceStore.js": {
+      "import": "./src/trace/SqliteTraceStore.ts"
+    },
+    "./src/trace/EventBus.js": {
+      "import": "./src/trace/EventBus.ts"
+    },
+    "./src/trace/TracePersister.js": {
+      "import": "./src/trace/TracePersister.ts"
+    },
+    "./src/skill/SkillRegistry.js": {
+      "import": "./src/skill/SkillRegistry.ts"
+    },
+    "./src/model/streaming.js": {
+      "import": "./src/model/streaming.ts"
+    },
+    "./src/model/HttpResilience.js": {
+      "import": "./src/model/HttpResilience.ts"
+    },
+    "./src/harness/HarnessLoop.js": {
+      "import": "./src/harness/HarnessLoop.ts"
     }
   },
   "scripts": {
@@ -30,13 +51,22 @@
   },
   "dependencies": {
     "@computer-use/nut-js": "^4.2.0",
+    "@cua-lark/uia-bridge": "workspace:*",
     "@ui-tars/operator-nut-js": "^1.2.3",
     "@ui-tars/sdk": "^1.2.3",
+    "axios": "^1.16.0",
+    "axios-retry": "^4.5.0",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
     "glob": "^11.0.3",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "openai": "^4.0.0",
+    "opossum": "^9.0.0",
     "ulid": "^2.3.0",
+    "yaml": "^2.8.4",
     "zod": "^3.23.0"
   },
   "devDependencies": {

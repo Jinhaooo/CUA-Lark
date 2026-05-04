@@ -1,24 +1,35 @@
 ---
 name: lark_im.send_message
 kind: agent_driven
-description: 在当前会话中发送文本消息
+description: Send a text message in the currently open Lark chat.
 verify_actions: true
 params_schema:
   text: string
+verifyDifficulty:
+  uia: high
+  ocr: medium
+  vlm: low
+verifyStrategy:
+  preferredStages:
+    - name: fast
+      spec:
+        kind: ocr
+        contains: "${params.text}"
+      maxDurationMs: 1000
+    - name: expensive
+      spec:
+        kind: vlm
+        prompt: "Verify that the latest sent message exactly matches '${params.text}' and has no failed-send or retry indicator."
+      maxDurationMs: 3000
 ---
 
-# 发送消息
+# Send Message
 
-## 功能说明
-- 在当前打开会话的输入框中输入文本
-- 按回车键发送消息
+Type `text` into the currently open Lark chat input and press Enter. Do not click the send button after typing; Enter submits the message.
 
-## 区分性描述
-1. 输入框位于消息区下方，是一个白色多行可输入区域（带灰色 placeholder "输入消息..."）
-2. 不要点击：上方工具栏中的"@"按钮、"表情"按钮、"附件"按钮（它们是图标按钮）
-3. 不要点击右下角的"语音"或"视频"按钮（它们是圆形图标按钮）
+When processing an existing message, you can right-click the target message first, then inspect the context menu to decide the next operation.
 
-## 完成判据
-- 输入框文本被清空（恢复 placeholder 状态）
-- 消息列表底部新增一条消息气泡，文本完全等于发送内容
-- 该气泡靠右显示（自己发出的消息），无红色感叹号或重发按钮
+Completion criteria:
+- The input returns to an empty or placeholder state.
+- A new outgoing message appears at the bottom of the conversation.
+- The message text exactly matches `text` and has no failed-send or retry indicator.

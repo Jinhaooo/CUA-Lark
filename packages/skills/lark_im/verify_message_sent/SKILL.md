@@ -1,19 +1,30 @@
 ---
 name: lark_im.verify_message_sent
 kind: agent_driven
-description: 验证消息是否成功发送
+description: Verify that a text message was sent successfully in the current Lark chat.
 verify_actions: true
 params_schema:
   text: string
+verifyDifficulty:
+  uia: high
+  ocr: medium
+  vlm: low
+verifyStrategy:
+  preferredStages:
+    - name: fast
+      spec:
+        kind: ocr
+        contains: "${params.text}"
+      maxDurationMs: 1000
+    - name: expensive
+      spec:
+        kind: vlm
+        prompt: "Verify that the latest visible message exactly matches '${params.text}' and has no failed-send or retry indicator."
+      maxDurationMs: 3000
 ---
 
-# 验证消息发送
+# Verify Message Sent
 
-## 功能说明
-- 使用VLM分析截图，提取消息列表底部最后一条消息的文本
-- 验证消息是否成功发送（无失败/重发标志）
-- 使用fuzzy match判定（Levenshtein距离≤1）
+Check the bottom of the current Lark conversation and verify that the latest visible message matches `text` without any failed-send or retry indicator.
 
-## 完成判据
-- 消息列表底部最后一条消息文本与指定文本匹配（允许1字差异）
-- 消息无失败/重发标志（如红色感叹号、"重发"按钮、灰色"发送中..."提示）
+When processing an existing message, you can right-click the target message first, then inspect the context menu to decide the next operation.

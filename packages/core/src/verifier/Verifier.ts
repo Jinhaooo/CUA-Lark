@@ -1,60 +1,74 @@
-import type { Verifier as VerifierInterface } from './types.js';
+/**
+ * Verifier - 验证器主调度器
+ *
+ * 作为验证器的统一入口，根据验证规范类型分发到对应验证器
+ */
+
 import type { Context, VerifyResult, VerifySpec } from '../types.js';
 import { VlmVerifier } from './VlmVerifier.js';
-import { CompositeVerifier } from './CompositeVerifier.js';
 import { OcrVerifier } from './OcrVerifier.js';
+import { A11yVerifier } from './A11yVerifier.js';
+import { StagedVerifier } from './StagedVerifier.js';
 
-export class Verifier implements VerifierInterface {
+export class Verifier {
   private vlmVerifier: VlmVerifier;
   private ocrVerifier: OcrVerifier;
-  private compositeVerifier: CompositeVerifier;
+  private a11yVerifier: A11yVerifier;
+  private stagedVerifier: StagedVerifier;
 
-  constructor(model: any) {
-    this.vlmVerifier = new VlmVerifier(model);
+  constructor() {
+    this.vlmVerifier = new VlmVerifier();
     this.ocrVerifier = new OcrVerifier();
-    this.compositeVerifier = new CompositeVerifier(this);
+    this.a11yVerifier = new A11yVerifier();
+    this.stagedVerifier = new StagedVerifier((subSpec, ctx) => this.verify(subSpec, ctx));
   }
 
   async run(spec: VerifySpec, ctx: Context): Promise<VerifyResult> {
-    let lastError: Error | undefined;
-    
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const result = await this.runOnce(spec, ctx);
-        if (result.passed) {
-          return result;
-        }
-        lastError = new Error(result.reason);
-        await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (lastError.message.includes('M3+')) {
-          throw lastError;
-        }
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-    }
-
-    return {
-      passed: false,
-      reason: lastError ? lastError.message : 'Verification failed after multiple attempts'
-    };
+    return this.verify(spec, ctx);
   }
 
-  private async runOnce(spec: VerifySpec, ctx: Context): Promise<VerifyResult> {
+  async verify(spec: VerifySpec, ctx: Context): Promise<VerifyResult> {
     switch (spec.kind) {
       case 'vlm':
-        return this.vlmVerifier.run(spec, ctx);
+        return this.vlmVerifier.verify(spec, ctx);
+
       case 'ocr':
-        return this.ocrVerifier.run(spec, ctx);
-      case 'all':
-      case 'any':
-        return this.compositeVerifier.run(spec, ctx);
-      case 'pixel':
+        return this.ocrVerifier.verify(spec, ctx);
+
       case 'a11y':
-        throw new Error(`待 M3+ 接入：kind=${spec.kind}`);
+        return this.a11yVerifier.verify(spec, ctx);
+
+      case 'staged':
+        return this.stagedVerifier.verify(spec, ctx);
+
+      case 'all': {
+        for (const subSpec of spec.of) {
+          const result = await this.verify(subSpec, ctx);
+          if (!result.passed) {
+            return result;
+          }
+        }
+        return { passed: true, reason: 'All verifications passed' };
+      }
+
+      case 'any': {
+        for (const subSpec of spec.of) {
+          const result = await this.verify(subSpec, ctx);
+          if (result.passed) {
+            return result;
+          }
+        }
+        return { passed: false, reason: 'None of the verifications passed' };
+      }
+
+      case 'pixel':
+        throw new Error('待 M3+ 接入：kind=pixel');
+
       default:
-        throw new Error(`Unknown verification kind: ${(spec as any).kind}`);
+        return {
+          passed: false,
+          reason: `Unknown verify kind: ${(spec as VerifySpec).kind}`
+        };
     }
   }
 }

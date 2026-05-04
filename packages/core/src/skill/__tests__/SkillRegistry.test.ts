@@ -85,7 +85,7 @@ Test skill documentation`);
     
     // 创建技能实现文件
     writeFileSync(join(skillDir, 'agent_driven.ts'), `
-import { defineSkill } from '../../src/skill/defineSkill';
+import { defineSkill } from '../../src/skill/defineSkill.ts';
 import { z } from 'zod';
 
 export default defineSkill({
@@ -96,6 +96,19 @@ export default defineSkill({
   params: z.object({}),
   execute: async () => {}
 });
+`);
+
+    const distSkillDir = join(testDir, 'dist', 'test-skill');
+    mkdirSync(distSkillDir, { recursive: true });
+    writeFileSync(join(distSkillDir, 'agent_driven.js'), `
+export default {
+  name: 'test-skill',
+  kind: 'agent_driven',
+  description: 'Test skill',
+  manual: 'Manual test',
+  params: {},
+  execute: async () => {}
+};
 `);
 
     try {

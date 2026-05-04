@@ -7,6 +7,7 @@ export default defineConfig({
     fileParallelism: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.ts'],
+    exclude: ['src/_deprecated/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

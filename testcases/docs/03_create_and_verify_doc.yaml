@@ -1,0 +1,12 @@
+id: docs_03_create_with_content
+title: Create Doc With Content
+tags: [docs, m3c]
+timeoutSeconds: 300
+instruction: "Create a Lark document in ${config:docs.test_folder_name} titled \"${config:docs.test_doc_prefix}Content\" and insert the body text \"CUA-Test-Doc-Body\"."
+expectations:
+  - The document title and body text are visible.
+teardown_skills:
+  - skill: _common.cleanup_docs
+    params:
+      folderName: "${config:docs.test_folder_name}"
+      titlePrefix: "${config:docs.test_doc_prefix}"

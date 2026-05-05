@@ -5,6 +5,13 @@ dist/
 traces/
 runs/
 bench-reports/
+
+# vendored Electron frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.turbo/
+frontend/out/
+frontend/.vite/
 *.log
 .env
 .env.*

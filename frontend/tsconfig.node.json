@@ -1,0 +1,17 @@
+{
+  "extends": ["@electron-toolkit/tsconfig/tsconfig.node.json", "./tsconfig.base.json"],
+  "include": [
+    "electron.vite.config.*",
+    "vitest.config.*",
+    "forge.config.ts",
+    "scripts/**/*",
+    "main/**/*",
+    "preload/**/*"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["electron-vite/node"]
+  }
+}

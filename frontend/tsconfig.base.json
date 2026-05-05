@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "moduleResolution": "bundler",
+    "paths": {
+      "react": ["./renderer/node_modules/@types/react"],
+      "react-dom": ["./renderer/node_modules/@types/react-dom"],
+      "@/*": ["./*"],
+      "@shared/*": ["./main/shared/*"],
+      "@main/*": ["./main/*"],
+      "@renderer/*": ["./renderer/src/*"],
+      "@resources/*": ["./pictures/*"]
+    }
+  }
+}

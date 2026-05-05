@@ -11,7 +11,7 @@ CUA-Lark is a TypeScript workspace for running computer-use agents against the L
 - **Curation data layer** — `EmbeddingClient`, `FewShotMiner`, `FailureClusterer` mine successful traces into few-shot examples and cluster failures by error kind. Exposed via `/curation/*` HTTP routes and the dashboard.
 - **SQLite trace store** — task rows + event rows, WAL mode, idempotent event writes, JSONL migration helpers. The Fastify server exposes task / trace / SSE APIs; the dashboard package consumes them for inspection, failure triage, and few-shot review.
 - **Skill library** — shared `_common` (popup dismissal, permission-denied handling), `lark_im` (search contact, send message, verify sent), `lark_calendar` (create event), `lark_docs`, and exploratory `lark_x` cross-app skills. Procedural skills with agent-driven fallback are still supported, but the harness can also drive raw NL tasks against the tool registry directly.
-- **Optional Electron frontend (Path B)** — a vendored UI-TARS-desktop fork lives outside this repo (`../frontend/`) and talks to `packages/server` over SSE. Global ESC shortcut aborts the active task; risk confirmations and running-task indicators are wired through the shared zustand store.
+- **Electron frontend (Path B)** — a vendored UI-TARS-desktop fork now lives at `frontend/` and talks to `packages/server` over SSE. Global ESC shortcut aborts the active task; risk confirmations and running-task indicators are wired through the shared zustand store. The frontend has its own pnpm workspace (`frontend/pnpm-workspace.yaml`), so install / build it separately from the backend.
 
 ## Repository Layout
 
@@ -40,6 +40,10 @@ packages/
   cli/                exec / run / bench / prompt commands
   uia-bridge/         Windows UI Automation bridge
   ocr-bridge/         Python FastAPI OCR service (PaddleOCR / RapidOCR)
+frontend/             Electron app (vendored UI-TARS-desktop fork, separate pnpm workspace)
+  main/               Electron main process (escapeStop, runAgent, windowManager, …)
+  preload/            preload bridge
+  renderer/           React UI (RunMessages, useRunAgent, settings, …)
 configs/              harness, robustness, risk-gate, server, test-targets, vlm-upgrade
 testcases/            YAML workflow test cases
 scripts/              guard checks, trace migration, smoke tests, real E2E
@@ -153,9 +157,19 @@ The dashboard package consumes these APIs:
 pnpm --filter @cua-lark/dashboard dev
 ```
 
-### Optional Electron frontend
+### Electron frontend
 
-The Electron app under `../frontend/` (vendored from UI-TARS-desktop) connects to the same backend over SSE. It registers a global ESC shortcut so the agent can be aborted even while it has window focus, and surfaces a "running" indicator with the current step / action / elapsed time. That code is not part of this repository.
+The Electron app under `frontend/` (vendored from UI-TARS-desktop) connects to the same backend over SSE. It registers a global ESC shortcut so the agent can be aborted even while it has window focus, and surfaces a "running" indicator with the current step / action / elapsed time.
+
+The frontend is a separate pnpm workspace, so install and run it independently of the backend:
+
+```powershell
+cd frontend
+pnpm install
+pnpm dev
+```
+
+With the backend running on `127.0.0.1:7878` and the Electron window open, the chat input drives a HarnessLoop run; the renderer subscribes to the SSE stream and renders thought chunks, tool calls, and observations live.
 
 ## ReAct Loop Design Notes
 

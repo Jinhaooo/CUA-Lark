@@ -1,0 +1,223 @@
+/**
+ * Copyright (c) 2025 Bytedance, Inc. and its affiliates.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+.hide_scroll_bar::-webkit-scrollbar {
+  display: none;
+}
+
+html,
+body,
+#root {
+  background: transparent !important;
+}
+
+.draggable-area {
+  -webkit-app-region: drag;
+}
+
+.no-drag,
+button,
+textarea,
+input {
+  -webkit-app-region: no-drag;
+}
+
+.loader-icon {
+  animation: spin 2s linear infinite;
+  color: #9ca3af;
+}
+
+.future-widget-panel {
+  position: relative;
+  border-radius: 18px;
+  border: 1px solid rgba(20, 86, 240, 0.18);
+  background:
+    radial-gradient(
+      circle at 16% 8%,
+      rgba(52, 211, 153, 0.22),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 88% 16%,
+      rgba(20, 86, 240, 0.18),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.94),
+      rgba(244, 248, 255, 0.86)
+    );
+  box-shadow:
+    0 22px 60px rgba(19, 61, 154, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.future-widget-panel::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-image:
+    linear-gradient(rgba(20, 86, 240, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 86, 240, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 76%);
+}
+
+.future-chip {
+  border: 1px solid rgba(20, 86, 240, 0.18);
+  background: rgba(238, 244, 255, 0.72);
+  box-shadow: 0 0 18px rgba(20, 86, 240, 0.12);
+}
+
+.future-button {
+  border: 1px solid rgba(20, 86, 240, 0.22);
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 0 18px rgba(20, 86, 240, 0.1);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.future-button:hover {
+  border-color: rgba(20, 86, 240, 0.48);
+  box-shadow: 0 0 24px rgba(20, 86, 240, 0.18);
+  transform: translateY(-1px);
+}
+
+.widget-bird-stage {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+}
+
+.widget-bird-orbit {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(20, 86, 240, 0.22);
+  border-top-color: rgba(52, 211, 153, 0.9);
+  border-radius: 999px;
+  animation: bird-orbit 2.8s linear infinite;
+}
+
+.widget-bird {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(20, 86, 240, 0.18);
+  animation: bird-work 1.9s ease-in-out infinite;
+}
+
+.widget-bird-stage[data-running='false'] .widget-bird,
+.widget-bird-stage[data-running='false'] .widget-bird-orbit {
+  animation-duration: 4.5s;
+  opacity: 0.72;
+}
+
+.widget-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #34d399;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.8);
+  animation: spark-fly 1.8s ease-in-out infinite;
+}
+
+.widget-spark-a {
+  top: 8px;
+  right: 6px;
+}
+
+.widget-spark-b {
+  right: 2px;
+  bottom: 12px;
+  animation-delay: 0.28s;
+}
+
+.widget-spark-c {
+  bottom: 4px;
+  left: 10px;
+  animation-delay: 0.58s;
+}
+
+.widget-progress-track {
+  position: relative;
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(20, 86, 240, 0.1);
+}
+
+.widget-progress-beam {
+  position: absolute;
+  inset-block: 0;
+  left: -38%;
+  width: 38%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #1456f0,
+    #34d399,
+    transparent
+  );
+  filter: drop-shadow(0 0 8px rgba(20, 86, 240, 0.42));
+  animation: progress-beam 2.2s ease-in-out infinite;
+}
+
+.widget-progress-beam[data-running='false'] {
+  animation-duration: 4.8s;
+  opacity: 0.55;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bird-work {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg) scale(1);
+  }
+  45% {
+    transform: translateY(-4px) rotate(3deg) scale(1.04);
+  }
+}
+
+@keyframes bird-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spark-fly {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translate(0, 0) scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(4px, -6px) scale(1.25);
+  }
+}
+
+@keyframes progress-beam {
+  0% {
+    left: -38%;
+  }
+  100% {
+    left: 100%;
+  }
+}

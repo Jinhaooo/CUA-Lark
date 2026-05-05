@@ -1,0 +1,16 @@
+{
+  "extends": ["@electron-toolkit/tsconfig/tsconfig.web.json", "./tsconfig.base.json"],
+  "include": [
+    "renderer/src/typings/*.d.ts",
+    "renderer/src/**/*",
+    "renderer/src/**/*.tsx",
+    "main/store/types.ts",
+    "main/shared/**/*.ts",
+    "main/ipcRoutes/index.ts",
+    "preload/*.d.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx"
+  }
+}

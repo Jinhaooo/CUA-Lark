@@ -8,6 +8,7 @@
     "test": "turbo run test",
     "test:m4:sqlite": "tsx scripts/test-m4-sqlite-traces.ts",
     "test:e2e:real": "tsx scripts/test-real-e2e.ts",
+    "check:prompt": "tsx scripts/prompt-static-check.ts",
     "build": "turbo run build",
     "dev": "turbo run dev"
   },

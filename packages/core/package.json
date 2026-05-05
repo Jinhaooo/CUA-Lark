@@ -45,6 +45,9 @@
     "./src/harness/PauseController.js": {
       "import": "./src/harness/PauseController.ts"
     },
+    "./src/harness/promptBudget.js": {
+      "import": "./src/harness/promptBudget.ts"
+    },
     "./src/tools/meta/ASK_USER.js": {
       "import": "./src/tools/meta/ASK_USER.ts"
     },

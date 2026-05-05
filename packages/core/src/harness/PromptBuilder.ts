@@ -36,7 +36,7 @@ export class PromptBuilder {
 
   constructor(toolRegistry: ToolRegistry, opts?: { promptsDir?: string }) {
     this.toolRegistry = toolRegistry;
-    const dir = opts?.promptsDir ?? path.join(__dirname_safe, 'prompts');
+    const dir = opts?.promptsDir ?? PromptBuilder.resolveDefaultPromptsDir();
     this.base = readFileSync(path.join(dir, 'base.system.md'), 'utf8').trim();
     this.snippets = new Map();
     const snippetsDir = path.join(dir, 'snippets');
@@ -48,6 +48,23 @@ export class PromptBuilder {
       this.snippets.set(name, readFileSync(filePath, 'utf8').trim());
     }
     this.assertStaticBudget();
+  }
+
+  /**
+   * Locate the prompts dir at runtime. From compiled dist (`dist/harness/`) the
+   * .md files don't exist (TypeScript doesn't copy assets), so we fall back to
+   * `src/harness/prompts/`. From src (vitest / direct ts-node run) the
+   * sibling prompts/ dir works directly.
+   */
+  private static resolveDefaultPromptsDir(): string {
+    const candidates = [
+      path.join(__dirname_safe, 'prompts'),
+      path.join(__dirname_safe, '..', '..', 'src', 'harness', 'prompts'),
+    ];
+    for (const c of candidates) {
+      if (existsSync(path.join(c, 'base.system.md'))) return c;
+    }
+    return candidates[0]!; // first will produce a clear ENOENT
   }
 
   private assertStaticBudget(): void {

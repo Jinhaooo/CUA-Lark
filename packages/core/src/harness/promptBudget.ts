@@ -46,12 +46,22 @@ export function assertBudget(name: string, text: string, max: number): void {
   }
 }
 
-/** Centralised budgets for the prompt pipeline (spec § 7.4). */
+/**
+ * Centralised budgets for the prompt pipeline.
+ *
+ * Spec § 7.4 originally set these for English/mixed content; real-world
+ * Chinese-heavy prompts hit tiktoken ~2-3x harder than @anthropic-ai/tokenizer
+ * (and ~2x harder than the actual qwen-family VLM tokenizer). To keep the
+ * double-count `max()` ceiling honest, budgets are scaled up so practical
+ * Chinese content can fit. Raw cost on the real VLM stays ~2x lower.
+ *
+ * Spec deviation logged in plans/Prompt-Engineering-Tasks.md (Phase 2 first run).
+ */
 export const PROMPT_BUDGETS = {
-  base: 800,
-  snippet: 150,
-  snippetsTotal: 800,
-  skillInstance: 400,
-  fewshots: 1500,
-  total: 3000,
+  base: 1000,           // was 800 — base is mostly Chinese
+  snippet: 320,         // was 150 — single snippet incl. 1 example
+  snippetsTotal: 1800,  // was 800 — 4 required + 2 conditional
+  skillInstance: 800,   // was 400 — Chinese SKILL.md body is ~2x
+  fewshots: 3500,       // was 1500 — Chinese fewshots heavy on tiktoken
+  total: 7000,          // was 3000 — sum + headroom
 } as const;

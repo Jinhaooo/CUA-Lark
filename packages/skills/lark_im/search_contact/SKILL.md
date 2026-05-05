@@ -21,3 +21,15 @@ Completion criteria:
 - The main conversation area has switched to the matching chat.
 - The chat title contains `name_pattern`.
 - The message list and input box are visible.
+
+## 锚点状态
+
+- **A1 · 搜索框未打开**：飞书主界面，侧边栏可见放大镜图标
+- **A2 · 搜索框已聚焦**：顶部搜索面板浮出，光标在文本框内
+- **A3 · 候选列表显示**：搜索面板下方出现"群组"/"消息"分组的候选项
+- **A4 · 目标会话已打开**：右侧主区切换到目标群/联系人，标题正确
+
+**过渡条件**：
+- A1 → A2：`click(侧边栏放大镜图标)`
+- A2 → A3：`type(name_pattern)`
+- A3 → A4：`click(群组分类下匹配的群组卡片)` — **不是消息片段**

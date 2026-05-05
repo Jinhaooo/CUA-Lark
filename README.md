@@ -194,6 +194,32 @@ Run M2 guard checks:
 C:\msys64\usr\bin\bash.exe scripts/check-do-not-m2.sh
 ```
 
+## Prompt Engineering
+
+The HarnessLoop's system prompt is composed by `PromptBuilder` from:
+
+- `packages/core/src/harness/prompts/base.system.md` — XML-tagged 4-section thought (`observation` / `analysis` / `plan` / `action`) + tool contract
+- `packages/core/src/harness/prompts/snippets/*.md` — 6 reusable snippets (4 required, 2 conditional)
+  - **Required**: `state-diff-reasoning` / `tool-selection-heuristics` / `loop-prevention` / `finished-criteria`
+  - **Conditional**: `anchor-checking` (when SKILL.md has `## 锚点状态` section), `lark-window-discipline` (when skill name starts with `lark_`)
+- Per-skill `SKILL.md` body — task description / completion criteria / anchors / common pitfalls (parsed by `parseSkillBody`)
+- Per-skill `few-shots/*.md` — handcrafted execution traces, wrapped in `<example>` tags
+
+**Token budget** (max of @anthropic-ai/tokenizer + js-tiktoken counts):
+- base ≤ 1000 tk · single snippet ≤ 320 tk · skill instance ≤ 800 tk · fewshots ≤ 3500 tk · **total ≤ 7000 tk**
+- Static prefix (base + snippets) is constant per skill — prompt-cache friendly
+- Budget enforced at construction time + every `build()` call; over-budget throws `PromptBudgetExceeded`
+
+Run static checks:
+
+```powershell
+pnpm check:prompt
+```
+
+Plan: [`plans/Prompt-Engineering-Implementation-Plan.md`](./plans/Prompt-Engineering-Implementation-Plan.md) (spec) + [`plans/Prompt-Engineering-Tasks.md`](./plans/Prompt-Engineering-Tasks.md) (TDD task list).
+
+A/B report: [`bench-reports/prompt-ab-test.md`](./bench-reports/prompt-ab-test.md).
+
 ## Exit Codes
 
 | Code | Meaning |

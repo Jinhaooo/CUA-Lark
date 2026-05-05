@@ -96,7 +96,12 @@ describe('HarnessLoop', () => {
     const result = await loop.run(createTemplate({ toolWhitelist: ['finished'] }), ctx);
 
     expect(result.success).toBe(false);
-    expect(result.trace[0]?.observation).toBe('Unknown or unavailable tool: click');
+    // M6 hallucination-prevention: corrective Chinese observation listing the
+    // actual whitelist + counter ("第 1 次连续错调"). The old M3.5 message
+    // 'Unknown or unavailable tool: click' was replaced when the
+    // tool_hallucination_detected fail-fast path landed.
+    expect(result.trace[0]?.observation).toContain('不存在名为 "click" 的工具');
+    expect(result.trace[0]?.observation).toContain('合法工具名');
     expect(execute).not.toHaveBeenCalled();
   });
 });

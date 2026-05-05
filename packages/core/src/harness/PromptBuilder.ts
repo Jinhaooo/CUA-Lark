@@ -1,66 +1,154 @@
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ToolRegistry } from '../tools/types.js';
-import type { SkillTemplate, HarnessTrace } from './types.js';
+import type { SkillTemplate } from './types.js';
+import { parseSkillBody } from './parseSkillBody.js';
+import { assertBudget, countTokens, PROMPT_BUDGETS } from './promptBudget.js';
+
+export interface SkillContext {
+  skillName: string;
+  markdownBody: string;
+  hasAnchors: boolean;
+  /** Optional absolute path to the skill directory; used to load few-shots. */
+  skillDir?: string;
+}
+
+const REQUIRED_SNIPPETS = [
+  'state-diff-reasoning',
+  'tool-selection-heuristics',
+  'loop-prevention',
+  'finished-criteria',
+] as const;
+
+const CONDITIONAL_SNIPPETS = ['anchor-checking', 'lark-window-discipline'] as const;
+
+const SECTION_SEPARATOR = '\n\n---\n\n';
+
+const __dirname_safe = (() => {
+  try { return path.dirname(fileURLToPath(import.meta.url)); } catch { return process.cwd(); }
+})();
 
 export class PromptBuilder {
   private toolRegistry: ToolRegistry;
+  private base: string;
+  private snippets: Map<string, string>;
 
-  constructor(toolRegistry: ToolRegistry) {
+  constructor(toolRegistry: ToolRegistry, opts?: { promptsDir?: string }) {
     this.toolRegistry = toolRegistry;
+    const dir = opts?.promptsDir ?? path.join(__dirname_safe, 'prompts');
+    this.base = readFileSync(path.join(dir, 'base.system.md'), 'utf8').trim();
+    this.snippets = new Map();
+    const snippetsDir = path.join(dir, 'snippets');
+    for (const name of [...REQUIRED_SNIPPETS, ...CONDITIONAL_SNIPPETS]) {
+      const filePath = path.join(snippetsDir, `${name}.md`);
+      if (!existsSync(filePath)) {
+        throw new Error(`PromptBuilder: missing snippet ${filePath}`);
+      }
+      this.snippets.set(name, readFileSync(filePath, 'utf8').trim());
+    }
+    this.assertStaticBudget();
   }
 
-  build(template: SkillTemplate): string {
+  private assertStaticBudget(): void {
+    assertBudget('base', this.base, PROMPT_BUDGETS.base);
+    for (const [name, content] of this.snippets) {
+      assertBudget(`snippet:${name}`, content, PROMPT_BUDGETS.snippet);
+    }
+  }
+
+  build(template: SkillTemplate, ctx?: SkillContext): string {
+    const sections: string[] = [];
+
+    // STATIC region
+    sections.push(this.base);
+    sections.push(this.selectSnippets(ctx).join('\n\n'));
+
+    // DYNAMIC region
+    sections.push(this.renderSkillInstance(template, ctx));
+    const fewshots = this.renderFewshots(ctx);
+    if (fewshots) sections.push(fewshots);
+
+    const final = sections.filter(Boolean).join(SECTION_SEPARATOR);
+    assertBudget('total', final, PROMPT_BUDGETS.total);
+    return final;
+  }
+
+  /** Backward-compatible legacy entrypoint (M3.5 callers). */
+  buildFromMarkdown(markdownContent: string, toolWhitelist?: string[]): string {
+    const tools = this.toolRegistry.toSystemPromptSection(toolWhitelist);
+    return markdownContent.replace('{{TOOLS}}', tools);
+  }
+
+  // ---- internals ----
+
+  private selectSnippets(ctx?: SkillContext): string[] {
+    const out: string[] = [];
+    for (const name of REQUIRED_SNIPPETS) out.push(this.snippets.get(name)!);
+    if (ctx?.hasAnchors) out.push(this.snippets.get('anchor-checking')!);
+    if (ctx?.skillName?.startsWith('lark_')) out.push(this.snippets.get('lark-window-discipline')!);
+    return out;
+  }
+
+  private renderSkillInstance(template: SkillTemplate, ctx?: SkillContext): string {
+    const body = ctx?.markdownBody ?? (template as { systemPrompt?: string }).systemPrompt ?? '';
+    const parsed = parseSkillBody(body);
+
     const parts: string[] = [];
 
-    parts.push(`你是飞书（Lark）桌面客户端的任务执行助手。请始终用中文进行思考（thought）和回答。`);
-    parts.push(`本次任务目标：${template.description}`);
-    parts.push('');
+    // 1. 任务说明
+    const taskBlock = [template.description, parsed.taskDetails].filter(Boolean).join('\n\n');
+    parts.push(`## 任务说明\n\n${taskBlock || template.description || ''}`);
 
-    if (template.systemPrompt && template.systemPrompt.trim()) {
-      parts.push('## 任务说明');
-      parts.push(template.systemPrompt);
-      parts.push('');
+    // 2. 完成判据
+    const finishCriteria = parsed.finishCriteria ?? (template as { finishCriteria?: string }).finishCriteria;
+    if (finishCriteria && finishCriteria.trim()) {
+      parts.push(`## 完成判据\n\n${finishCriteria.trim()}`);
     }
 
-    if (template.finishCriteria && template.finishCriteria.trim()) {
-      parts.push('## 完成判据');
-      parts.push(template.finishCriteria);
-      parts.push('');
+    // 3. 锚点状态 (only when present)
+    if (parsed.anchors && parsed.anchors.trim()) {
+      parts.push(`## 锚点状态\n\n${parsed.anchors.trim()}`);
     }
 
-    parts.push('## 可用工具');
-    const tools = this.toolRegistry.toSystemPromptSection(template.toolWhitelist);
-    parts.push(tools);
-    parts.push('');
-
-    if (template.fewShots && template.fewShots.length > 0) {
-      parts.push('## 示例');
-      template.fewShots.forEach((shot: HarnessTrace[], index: number) => {
-        parts.push(`### 示例 ${index + 1}`);
-        shot.forEach((step: HarnessTrace) => {
-          parts.push(`- Thought: ${step.thought}`);
-          parts.push(`  Action: ${step.toolCall.name}(${JSON.stringify(step.toolCall.args)})`);
-          parts.push(`  Observation: ${step.observation}`);
-        });
-      });
-      parts.push('');
+    // 4. 常见陷阱
+    if (parsed.pitfalls && parsed.pitfalls.trim()) {
+      parts.push(`## 常见陷阱\n\n${truncateByTokens(parsed.pitfalls.trim(), 300)}`);
     }
 
-    parts.push('## 输出格式');
-    parts.push('你必须严格输出以下 JSON（thought 字段用中文）：');
-    parts.push('```json');
-    parts.push('{"thought": "本步推理（中文）", "tool_call": {"name": "工具名", "args": {...}}}');
-    parts.push('```');
-    parts.push('不要在 JSON 之外输出任何额外文字。任何场景都必须以工具调用作为回应——包括任务已完成时也必须调用 `finished` 工具，例如：');
-    parts.push('```json');
-    parts.push('{"thought": "消息已发送成功，任务完成。", "tool_call": {"name": "finished", "args": {"success": true, "reason": "消息已发送"}}}');
-    parts.push('```');
-    parts.push('避免连续多次重复同一动作（例如反复 screenshot），每一步都要在前一步观察基础上推进。');
+    // 5. 可用工具
+    parts.push(`## 可用工具\n\n${this.toolRegistry.toSystemPromptSection(template.toolWhitelist)}`);
 
-    return parts.join('\n');
+    return parts.join('\n\n');
   }
 
-  buildFromMarkdown(markdownContent: string, toolWhitelist?: string[]): string {
-    const toolsSection = this.toolRegistry.toSystemPromptSection(toolWhitelist);
-    return markdownContent.replace('{{TOOLS}}', toolsSection);
+  private renderFewshots(ctx?: SkillContext): string {
+    if (!ctx?.skillDir) return '';
+    const dir = path.join(ctx.skillDir, 'few-shots');
+    if (!existsSync(dir)) return '';
+    const files = readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
+    if (files.length === 0) return '';
+
+    const blocks: string[] = [];
+    let used = 0;
+    for (const f of files) {
+      const content = readFileSync(path.join(dir, f), 'utf8').trim();
+      const t = countTokens(content).max;
+      if (used + t > PROMPT_BUDGETS.fewshots) break;
+      blocks.push(`<example>\n${content}\n</example>`);
+      used += t;
+      if (blocks.length >= 5) break;
+    }
+    if (blocks.length === 0) return '';
+    return `## 示例\n\n${blocks.join('\n\n')}`;
   }
+}
+
+function truncateByTokens(text: string, maxTokens: number): string {
+  const t = countTokens(text).max;
+  if (t <= maxTokens) return text;
+  // Coarse truncate by character ratio; append marker.
+  const ratio = maxTokens / t;
+  const cut = Math.max(50, Math.floor(text.length * ratio) - 20);
+  return text.slice(0, cut) + '…(truncated)';
 }

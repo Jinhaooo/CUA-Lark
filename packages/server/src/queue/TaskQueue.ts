@@ -9,17 +9,104 @@ import type {
   HarnessLoop,
   LarkOperator,
   ModelClient,
+  PauseController,
 } from '@cua-lark/core';
+import { PauseControllerImpl } from '@cua-lark/core/src/harness/PauseController.js';
 import { ulid } from 'ulid';
+import type { PauseReason } from '@cua-lark/core/src/trace/EventBus.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Best-effort window activator for win32. Iterates a list of process names,
+ * picks the first process that has a non-zero MainWindowHandle, and calls
+ * AppActivate on its PID. Optional `titlePattern` further filters processes
+ * whose `MainWindowTitle` contains the substring (case-insensitive) — used
+ * to disambiguate when several `electron`-named processes are running.
+ *
+ * Never throws. Returns a small status record for logging.
+ */
+async function activateWindowByProcess(
+  names: readonly string[],
+  titlePattern?: string,
+): Promise<{ ok: boolean; reason: string }> {
+  if (process.platform !== 'win32') {
+    return { ok: false, reason: `unsupported platform ${process.platform}` };
+  }
+
+  // NOTE: avoid ':' inside double-quoted PS strings — PowerShell treats `$var:`
+  // as a PSDrive scope qualifier and ParserError-fails. Use '|' as separator.
+  const namesPs = names.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
+  const titleFilter = titlePattern
+    ? ` | Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle.ToLower().Contains('${titlePattern.toLowerCase().replace(/'/g, "''")}') }`
+    : '';
+
+  const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type -AssemblyName Microsoft.VisualBasic
+$activated = $false
+foreach ($name in @(${namesPs})) {
+  $proc = Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }${titleFilter} | Select-Object -First 1
+  if ($proc) {
+    [Microsoft.VisualBasic.Interaction]::AppActivate($proc.Id) | Out-Null
+    $activated = $true
+    Write-Output ('ok|' + $name + '|' + $proc.Id)
+    break
+  }
+}
+if (-not $activated) { Write-Output 'miss' }
+`.trim();
+
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { windowsHide: true, timeout: 5000 },
+    );
+    const out = stdout.trim();
+    if (out.startsWith('ok|')) {
+      return { ok: true, reason: out };
+    }
+    return { ok: false, reason: `no MainWindow for [${names.join(',')}]${titlePattern ? ` title~${titlePattern}` : ''}` };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Bring the cua-lark Electron chat window back to the foreground after a
+ * task ends. Filtered by title substring 'cua' so we don't grab some
+ * unrelated Electron app (VSCode, Slack, etc.). Renderer sets the window
+ * title to e.g. "Lark-CUA"; matching 'cua' covers the variants.
+ *
+ * Lark/Feishu activation is now driven by the `activate_lark` tool, called
+ * by the agent itself — see packages/core/src/tools/act/activate_lark.ts.
+ */
+function restoreFocusToCUA(): Promise<{ ok: boolean; reason: string }> {
+  return activateWindowByProcess(['electron'], 'cua');
+}
 
 export interface TaskQueue {
   enqueue(task: { instruction: string; params?: Record<string, unknown> }): Promise<{ taskId: string }>;
   cancel(taskId: string): Promise<boolean>;
   getStatus(taskId: string): TaskStatus | null;
+  getTask(taskId: string): QueuedTask | null;
+  pauseTask(taskId: string, reason: PauseReason): { paused: boolean; alreadyPaused: boolean; pausedAtIteration: number; reason: PauseReason };
+  resumeTask(taskId: string): { resumed: boolean; alreadyRunning: boolean; resumedAtIteration: number };
+  skipTaskStep(taskId: string): { skipped: boolean; currentIteration: number };
   size(): number;
 }
 
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
+
+export interface QueuedTask {
+  taskId: string;
+  instruction: string;
+  params?: Record<string, unknown>;
+  status: TaskStatus;
+}
 
 export class QueueFull extends Error {
   constructor() {
@@ -39,6 +126,7 @@ export class TaskQueueImpl implements TaskQueue {
   private queue: Array<{ taskId: string; instruction: string; params?: Record<string, unknown> }> = [];
   private taskStatus = new Map<string, TaskStatus>();
   private abortControllers = new Map<string, AbortController>();
+  private pauseControllers = new Map<string, PauseController>();
   private isProcessing = false;
 
   constructor(
@@ -94,6 +182,66 @@ export class TaskQueueImpl implements TaskQueue {
 
   getStatus(taskId: string): TaskStatus | null {
     return this.taskStatus.get(taskId) || null;
+  }
+
+  getTask(taskId: string): QueuedTask | null {
+    const status = this.taskStatus.get(taskId);
+    if (!status) return null;
+    
+    const queued = this.queue.find(t => t.taskId === taskId);
+    if (queued) {
+      return { ...queued, status };
+    }
+    
+    return { taskId, instruction: '', status };
+  }
+
+  pauseTask(taskId: string, reason: PauseReason): { paused: boolean; alreadyPaused: boolean; pausedAtIteration: number; reason: PauseReason } {
+    const status = this.taskStatus.get(taskId);
+    if (status !== 'running') {
+      return { paused: false, alreadyPaused: status === 'paused', pausedAtIteration: 0, reason };
+    }
+
+    const pauseController = this.pauseControllers.get(taskId);
+    if (!pauseController) {
+      return { paused: false, alreadyPaused: false, pausedAtIteration: 0, reason };
+    }
+
+    const result = pauseController.pause(reason);
+    if (result.paused) {
+      this.taskStatus.set(taskId, 'paused');
+    }
+
+    return { ...result, reason };
+  }
+
+  resumeTask(taskId: string): { resumed: boolean; alreadyRunning: boolean; resumedAtIteration: number } {
+    const status = this.taskStatus.get(taskId);
+    if (status !== 'paused') {
+      return { resumed: false, alreadyRunning: status === 'running', resumedAtIteration: 0 };
+    }
+
+    const pauseController = this.pauseControllers.get(taskId);
+    if (!pauseController) {
+      return { resumed: false, alreadyRunning: false, resumedAtIteration: 0 };
+    }
+
+    const result = pauseController.resume();
+    if (result.resumed) {
+      this.taskStatus.set(taskId, 'running');
+    }
+
+    return result;
+  }
+
+  skipTaskStep(taskId: string): { skipped: boolean; currentIteration: number } {
+    const pauseController = this.pauseControllers.get(taskId);
+    if (!pauseController) {
+      return { skipped: false, currentIteration: 0 };
+    }
+
+    const result = pauseController.skipNextTool();
+    return { skipped: result.skipped, currentIteration: pauseController.pausedAtIteration ?? 0 };
   }
 
   size(): number {
@@ -158,6 +306,15 @@ export class TaskQueueImpl implements TaskQueue {
         });
       } finally {
         this.abortControllers.delete(task.taskId);
+        this.pauseControllers.delete(task.taskId);
+        // After every terminal state, hand focus back to the cua-lark chat
+        // window so the user isn't stranded staring at Feishu. Best-effort.
+        try {
+          const restore = await restoreFocusToCUA();
+          console.log(`[taskqueue] restore focus → cua-lark: ${restore.ok ? 'ok' : 'miss'} (${restore.reason})`);
+        } catch (err) {
+          console.warn('[taskqueue] restoreFocusToCUA threw:', err);
+        }
       }
     }
 
@@ -190,6 +347,9 @@ export class TaskQueueImpl implements TaskQueue {
       toolWhitelist: s.toolWhitelist,
       sideEffects: s.sideEffects,
       fewShots: s.fewShots,
+      // Thread skillDir from SkillRegistry so PromptBuilder.renderFewshots()
+      // can locate <skillDir>/few-shots/*.md per task.
+      skillDir: s.skillDir,
     }));
 
     if (templates.length === 0) {
@@ -219,6 +379,15 @@ export class TaskQueueImpl implements TaskQueue {
       startedAt: Date.now(),
     });
 
+    // 2b. Lark/Feishu activation is now agent-driven via the `activate_lark`
+    // tool — see PromptBuilder "执行原则" section #1. The agent must call it
+    // as the first action of every task; auto-focus would mask agents that
+    // don't learn the pattern.
+
+    // 3. 创建 pauseController
+    const pauseController = new PauseControllerImpl();
+    this.pauseControllers.set(task.taskId, pauseController);
+
     // 3. 跑 HarnessLoop
     const ctx = {
       operator,
@@ -241,6 +410,7 @@ export class TaskQueueImpl implements TaskQueue {
         error: (...args: unknown[]) => console.error('[harness]', ...args),
       },
       signal,
+      pauseController,
     };
 
     const result = await harnessLoop.run(routed.template, ctx as any);

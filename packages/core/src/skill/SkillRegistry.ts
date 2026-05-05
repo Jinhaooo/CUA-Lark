@@ -101,7 +101,7 @@ export class SkillRegistry implements SkillRegistryInterface {
   private async loadSkillFromFile(rootDir: string, skillFile: string): Promise<void> {
     const skillDir = dirname(skillFile);
     const content = readFileSync(skillFile, 'utf8');
-    const { data: frontmatter } = matter(content);
+    const { data: frontmatter, content: markdownBody } = matter(content);
 
     if (!frontmatter.name) {
       throw new Error(`Invalid SKILL.md: missing name in ${skillFile}`);
@@ -118,7 +118,8 @@ export class SkillRegistry implements SkillRegistryInterface {
     if (agentDrivenFile && proceduralFile) {
       const agentDrivenSkill = await this.importSkill(rootDir, skillDir, agentDrivenFile);
       agentDrivenSkill.name = `${frontmatter.name}_agent_driven`;
-      this.applyFrontmatter(agentDrivenSkill, frontmatter);
+      (agentDrivenSkill as Skill<unknown, unknown> & { skillDir?: string }).skillDir = skillDir;
+      this.applyFrontmatter(agentDrivenSkill, frontmatter, markdownBody);
       this.register(agentDrivenSkill);
     }
 
@@ -131,7 +132,8 @@ export class SkillRegistry implements SkillRegistryInterface {
       if (agentDrivenFile && !proceduralSkill.fallback && autoFallbackEnabled) {
         proceduralSkill.fallback = `${frontmatter.name}_agent_driven`;
       }
-      this.applyFrontmatter(proceduralSkill, frontmatter);
+      (proceduralSkill as Skill<unknown, unknown> & { skillDir?: string }).skillDir = skillDir;
+      this.applyFrontmatter(proceduralSkill, frontmatter, markdownBody);
       this.register(proceduralSkill);
       return;
     }
@@ -141,7 +143,8 @@ export class SkillRegistry implements SkillRegistryInterface {
     if (skill.name !== frontmatter.name) {
       throw new Error(`Skill name mismatch: ${skill.name} !== ${frontmatter.name} in ${skillFile}`);
     }
-    this.applyFrontmatter(skill, frontmatter);
+    (skill as Skill<unknown, unknown> & { skillDir?: string }).skillDir = skillDir;
+    this.applyFrontmatter(skill, frontmatter, markdownBody);
     this.register(skill);
   }
 
@@ -169,7 +172,11 @@ export class SkillRegistry implements SkillRegistryInterface {
     }
   }
 
-  private applyFrontmatter(skill: Skill<unknown, unknown>, frontmatter: Record<string, unknown>): void {
+  private applyFrontmatter(
+    skill: Skill<unknown, unknown>,
+    frontmatter: Record<string, unknown>,
+    markdownBody?: string,
+  ): void {
     if (frontmatter.verifyDifficulty) {
       skill.verifyDifficulty = frontmatter.verifyDifficulty as Skill<unknown, unknown>['verifyDifficulty'];
     }
@@ -178,6 +185,15 @@ export class SkillRegistry implements SkillRegistryInterface {
     }
     if (frontmatter.sideEffects && !skill.sideEffects) {
       skill.sideEffects = frontmatter.sideEffects as Skill<unknown, unknown>['sideEffects'];
+    }
+    // Surface SKILL.md body to the ReAct system prompt so domain knowledge
+    // (e.g. "right-click message → 撤回") reaches the VLM. Without this the
+    // markdown body is loaded but never used at runtime.
+    if (markdownBody && markdownBody.trim() && !skill.systemPrompt) {
+      skill.systemPrompt = markdownBody.trim();
+    }
+    if (typeof frontmatter.finishCriteria === 'string' && !skill.finishCriteria) {
+      skill.finishCriteria = frontmatter.finishCriteria;
     }
   }
 

@@ -1,4 +1,5 @@
 import type { SkillTemplate, HarnessResult, HarnessTrace, HarnessContext } from './types.js';
+import { parseSkillBody } from './parseSkillBody.js';
 import type { ToolRegistry } from '../tools/types.js';
 import { CallUserRequired } from './types.js';
 import { ulid } from 'ulid';
@@ -10,6 +11,19 @@ import { failureAnalystTool } from '../tools/verify/failure_analyst.js';
 import { RiskGate, type RiskGateConfig } from '../tools/RiskGate.js';
 import { loadRiskGateConfigFromYaml, toRiskGateConfig } from '../tools/RiskGateConfigLoader.js';
 import { PromptBuilder } from './PromptBuilder.js';
+
+async function checkPauseAndWait(ctx: HarnessContext): Promise<'resumed' | 'cancelled'> {
+  const pauseController = ctx.pauseController;
+  if (!pauseController) {
+    return 'resumed';
+  }
+
+  if (pauseController.state === 'paused') {
+    await pauseController.waitForResume();
+  }
+
+  return 'resumed';
+}
 
 export class HarnessLoop {
   private toolRegistry: ToolRegistry;
@@ -43,7 +57,10 @@ export class HarnessLoop {
   }
 
   async run(template: SkillTemplate, ctx: HarnessContext, signal?: AbortSignal): Promise<HarnessResult> {
-    return this.runInternal(template, ctx, signal, 0);
+    // Fallback: TaskQueue passes the cancel signal inside ctx; honour it so DELETE
+    // /tasks/:id reliably aborts (M6 contract: signal terminate > pause).
+    const effectiveSignal = signal ?? (ctx as { signal?: AbortSignal }).signal;
+    return this.runInternal(template, ctx, effectiveSignal, 0);
   }
 
   private async runInternal(
@@ -54,7 +71,19 @@ export class HarnessLoop {
   ): Promise<HarnessResult> {
     const trace: HarnessTrace[] = [];
     let totalTokens = 0;
-    const systemPrompt = new PromptBuilder(this.toolRegistry).build(template);
+    let consecutiveUnknownTool = 0;
+    const HALLUCINATED_TOOL_LIMIT = 2;
+    // SkillContext drives PromptBuilder's snippet selection + fewshot loading.
+    // hasAnchors is computed by parsing the SKILL.md body once; skillDir is
+    // expected to be threaded onto the template by SkillRegistry/TaskQueue.
+    const skillBody = (template as { systemPrompt?: string }).systemPrompt ?? '';
+    const skillContext = {
+      skillName: template.name,
+      markdownBody: skillBody,
+      hasAnchors: !!parseSkillBody(skillBody).anchors,
+      skillDir: (template as { skillDir?: string }).skillDir,
+    };
+    const systemPrompt = new PromptBuilder(this.toolRegistry).build(template, skillContext);
     const messages: any[] = [{ role: 'system', content: systemPrompt }];
     const recentToolCalls: string[] = [];
 
@@ -75,6 +104,25 @@ export class HarnessLoop {
           trace,
           totalTokens,
         };
+      }
+
+      if (ctx.pauseController) {
+        // Plumb iteration so PauseController records pausedAtIteration accurately.
+        (ctx.pauseController as any).currentIteration = iteration;
+
+        if (ctx.pauseController.state === 'paused') {
+          // pause/resume SSE emit lives in routes/pause.ts to avoid duplicate events.
+          const result = await checkPauseAndWait(ctx);
+          if (result === 'cancelled') {
+            return {
+              success: false,
+              finishedReason: 'cancelled',
+              iterations: iteration,
+              trace,
+              totalTokens,
+            };
+          }
+        }
       }
 
       ctx.iteration = iteration;
@@ -500,6 +548,53 @@ export class HarnessLoop {
         };
       }
 
+      // 工具执行前检查暂停状态（C19 强约束）。
+      // pause/resume SSE emit lives in routes/pause.ts; HarnessLoop only blocks here.
+      if (ctx.pauseController && ctx.pauseController.state === 'paused') {
+        const result = await checkPauseAndWait(ctx);
+        if (result === 'cancelled') {
+          return {
+            success: false,
+            finishedReason: 'cancelled',
+            iterations: iteration,
+            trace,
+            totalTokens,
+          };
+        }
+      }
+
+      // skip-step：用户在 paused 时点击"跳过当前 tool"，直接绕过本次执行。
+      if (ctx.pauseController && (ctx.pauseController as any).consumeSkip?.()) {
+        const skipObs = `tool '${toolCall.name}' skipped by user via skip-step`;
+        const traceEntry: HarnessTrace = {
+          iteration,
+          thought,
+          toolCall,
+          observation: skipObs,
+          durationMs: 0,
+          cost: { tokens: streamTokens },
+        };
+        trace.push(traceEntry);
+        this.emit({
+          kind: 'tool_result',
+          taskId: ctx.testRunId,
+          iteration,
+          success: true,
+          observation: skipObs,
+          durationMs: 0,
+        });
+        this.emit({
+          kind: 'iteration_complete',
+          taskId: ctx.testRunId,
+          iteration,
+          durationMs: 0,
+          cost: { tokens: streamTokens },
+        });
+        messages.push({ role: 'assistant', content: JSON.stringify({ thought, toolCall }) });
+        messages.push({ role: 'user', content: skipObs });
+        continue;
+      }
+
       const toolStartTime = Date.now();
       let observation: string;
       let success = true;
@@ -511,19 +606,49 @@ export class HarnessLoop {
 
         const tool = this.toolRegistry.get(toolCall.name);
         if (!tool || (template.toolWhitelist && !template.toolWhitelist.includes(toolCall.name))) {
+          consecutiveUnknownTool += 1;
+
+          // Fail-fast: a model that hallucinates two tool calls in a row will
+          // not recover by being told the whitelist a third time. Surface a
+          // terminal failure so the user sees the wedge instead of waiting
+          // through max_iterations.
+          if (consecutiveUnknownTool >= HALLUCINATED_TOOL_LIMIT) {
+            const reason = `tool_hallucination_detected: '${toolCall.name}' (and prior call) not in whitelist`;
+            await this.writeTrace(ctx, 'tool_hallucination', { lastUnknown: toolCall.name });
+            const durationMs = Date.now() - startTime;
+            this.emit({
+              kind: 'task_finished',
+              taskId: ctx.testRunId,
+              success: false,
+              reason,
+              durationMs,
+              totalTokens,
+            });
+            return {
+              success: false,
+              finishedReason: reason,
+              iterations: iteration,
+              trace,
+              totalTokens,
+            };
+          }
+
           const availableNames = this.toolRegistry
             .list({ whitelist: template.toolWhitelist })
             .map((t) => t.name);
           observation =
-            `工具调用错误：不存在名为 "${toolCall.name}" 的工具。\n` +
-            `你只能从以下已注册工具中选择（必须严格匹配名称）：\n${availableNames.map((n) => `- ${n}`).join('\n')}\n` +
-            `请重新选择一个上面列出的工具，并用 {"thought":"...","tool_call":{"name":"<上面工具名>","args":{...}}} 重发。如果任务已完成，必须调用 finished。`;
+            `工具调用错误：不存在名为 "${toolCall.name}" 的工具。这是第 ${consecutiveUnknownTool} 次连续错调，` +
+            `若再错一次任务将自动失败终止。\n` +
+            `合法工具名只有以下这些（必须严格匹配，不要自创、不要改写）：\n${availableNames.map((n) => `- ${n}`).join('\n')}\n` +
+            `若你认为任务已完成，立刻调用 finished：{"thought":"...","tool_call":{"name":"finished","args":{"success":true,"reason":"..."}}}`;
           success = false;
         } else {
+          consecutiveUnknownTool = 0;
           const args = tool.argsSchema.parse(toolCall.args ?? {});
+          const pauseSignal = ctx.pauseController?.pauseSignal();
           const result = tool.category === 'meta' || this.riskGate.shouldSkipRiskGate(template.name)
-            ? await tool.execute(ctx as any, args)
-            : await this.riskGate.executeWithRiskGate(tool, ctx as any, args, this.eventBus);
+            ? await tool.execute({ ...ctx, pauseSignal } as any, args)
+            : await this.riskGate.executeWithRiskGate(tool, { ...ctx, pauseSignal } as any, args, this.eventBus);
           observation = result.observation;
           success = result.success;
         }

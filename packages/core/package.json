@@ -42,6 +42,9 @@
     "./src/harness/HarnessLoop.js": {
       "import": "./src/harness/HarnessLoop.ts"
     },
+    "./src/harness/PauseController.js": {
+      "import": "./src/harness/PauseController.ts"
+    },
     "./src/tools/meta/ASK_USER.js": {
       "import": "./src/tools/meta/ASK_USER.ts"
     },
@@ -62,6 +65,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
     "@computer-use/nut-js": "^4.2.0",
     "@cua-lark/uia-bridge": "workspace:*",
     "@ui-tars/operator-nut-js": "^1.2.3",
@@ -74,6 +78,7 @@
     "drizzle-orm": "^0.45.2",
     "glob": "^11.0.3",
     "gray-matter": "^4.0.3",
+    "js-tiktoken": "^1.0.21",
     "js-yaml": "^4.1.0",
     "openai": "^4.0.0",
     "opossum": "^9.0.0",

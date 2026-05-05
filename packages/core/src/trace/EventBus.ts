@@ -17,7 +17,14 @@ export type HarnessStreamEvent =
   | { kind: 'skill_started'; taskId: string; skillName: string }
   | { kind: 'skill_finished'; taskId: string; skillName: string; success: boolean; iterations: number }
   | { kind: 'sse_subscriber_attached'; taskId: string; subscriberId: string }
-  | { kind: 'sse_subscriber_detached'; taskId: string; subscriberId: string; reason: 'client_close' | 'task_finished' };
+  | { kind: 'sse_subscriber_detached'; taskId: string; subscriberId: string; reason: 'client_close' | 'task_finished' }
+  | { kind: 'risk_evaluation_complete'; taskId: string; toolName: string; args: unknown; riskLevel: string; reason: string }
+  | { kind: 'risk_confirmation_required'; taskId: string; action: { name: string; args?: unknown }; riskLevel: string; reason: string; question: string }
+  | { kind: 'risk_confirmation_received'; taskId: string; toolName: string; confirmed: boolean; source: 'user' | 'timeout'; reason?: string }
+  | { kind: 'risk_approved'; taskId: string; toolName: string }
+  | { kind: 'self_healing_attempted'; taskId: string; reason: string; confidence: number }
+  | { kind: 'self_healing_succeeded'; taskId: string; iterationsBefore: number; iterationsAfter: number }
+  | { kind: 'self_healing_skipped'; taskId: string; reason: string; skipCause: 'unretryable_kind' | 'low_confidence' | 'max_retries' };
 
 export interface EventBus {
   emit(event: HarnessStreamEvent): void;

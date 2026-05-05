@@ -5,6 +5,7 @@ export interface HarnessStreamEvent {
   taskId: string;
   kind: string;
   event: TraceEvent;
+  [key: string]: unknown;
 }
 
 export function useSse(taskId: string | null) {
@@ -12,8 +13,9 @@ export function useSse(taskId: string | null) {
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const addEvent = useCallback((event: HarnessStreamEvent) => {
-    setEvents((prev) => [...prev, event]);
+  const addEvent = useCallback((event: any) => {
+    const normalized = event.event ? event : { ...event, event };
+    setEvents((prev) => [...prev, normalized]);
   }, []);
 
   useEffect(() => {
@@ -73,6 +75,23 @@ export function useSse(taskId: string | null) {
       } catch {
       }
     });
+
+    for (const eventName of [
+      'risk_confirmation_required',
+      'risk_confirmation_received',
+      'risk_approved',
+      'self_healing_attempted',
+      'self_healing_succeeded',
+      'self_healing_skipped',
+    ]) {
+      eventSource.addEventListener(eventName, (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          addEvent(data);
+        } catch {
+        }
+      });
+    }
 
     eventSource.addEventListener('ping', () => {
     });

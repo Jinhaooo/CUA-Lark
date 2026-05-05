@@ -41,6 +41,18 @@
     },
     "./src/harness/HarnessLoop.js": {
       "import": "./src/harness/HarnessLoop.ts"
+    },
+    "./src/tools/meta/ASK_USER.js": {
+      "import": "./src/tools/meta/ASK_USER.ts"
+    },
+    "./src/data/EmbeddingClient.js": {
+      "import": "./src/data/EmbeddingClient.ts"
+    },
+    "./src/data/FewShotMiner.js": {
+      "import": "./src/data/FewShotMiner.ts"
+    },
+    "./src/data/FailureClusterer.js": {
+      "import": "./src/data/FailureClusterer.ts"
     }
   },
   "scripts": {

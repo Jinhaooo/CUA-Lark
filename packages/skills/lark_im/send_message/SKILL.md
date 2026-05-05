@@ -33,3 +33,31 @@ Completion criteria:
 - The input returns to an empty or placeholder state.
 - A new outgoing message appears at the bottom of the conversation.
 - The message text exactly matches `text` and has no failed-send or retry indicator.
+
+## Common Pitfalls
+
+### 输入框定位失败
+- 聊天窗口可能未激活
+- 输入框可能被其他UI元素遮挡
+- 多窗口环境下可能定位到错误窗口
+
+### 发送失败
+- 网络延迟导致消息发送超时
+- 消息过长被截断
+- 敏感内容被系统拦截
+- 对方已拉黑或不在通讯录
+
+### UI状态问题
+- 输入框处于禁用状态（如在只读模式下）
+- 聊天窗口被最小化或在后台
+- 输入框聚焦但未真正激活
+
+### 验证失败
+- 消息发送后可能有延迟显示
+- 消息气泡样式可能与预期不同
+- 群聊中多条消息同时发送导致混淆
+
+### 权限问题
+- 可能没有发送消息的权限
+- 企业限制导致无法发送外部消息
+- 消息频率限制触发

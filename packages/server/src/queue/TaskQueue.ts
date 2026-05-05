@@ -1,5 +1,15 @@
+/**
+ * TaskQueue · 接 SkillRouter + HarnessLoop 真实运行（替换 M4 mock）
+ */
 import type { EventBus } from '../sse/SseBroker.js';
 import type { SqliteTraceStore } from '@cua-lark/core/src/trace/SqliteTraceStore.js';
+import type { SkillRegistry } from '@cua-lark/core/src/skill/SkillRegistry.js';
+import type {
+  SkillRouterImpl,
+  HarnessLoop,
+  LarkOperator,
+  ModelClient,
+} from '@cua-lark/core';
 import { ulid } from 'ulid';
 
 export interface TaskQueue {
@@ -17,6 +27,14 @@ export class QueueFull extends Error {
   }
 }
 
+export interface TaskQueueDeps {
+  skillRouter: SkillRouterImpl;
+  skillRegistry: SkillRegistry;
+  harnessLoop: HarnessLoop;
+  operator: LarkOperator;
+  modelClient: ModelClient | null;
+}
+
 export class TaskQueueImpl implements TaskQueue {
   private queue: Array<{ taskId: string; instruction: string; params?: Record<string, unknown> }> = [];
   private taskStatus = new Map<string, TaskStatus>();
@@ -26,7 +44,8 @@ export class TaskQueueImpl implements TaskQueue {
   constructor(
     private maxSize: number,
     private eventBus: EventBus,
-    private traceStore: SqliteTraceStore
+    private traceStore: SqliteTraceStore,
+    private deps?: TaskQueueDeps,
   ) {}
 
   async enqueue(task: { instruction: string; params?: Record<string, unknown> }): Promise<{ taskId: string }> {
@@ -92,32 +111,49 @@ export class TaskQueueImpl implements TaskQueue {
       this.taskStatus.set(task.taskId, 'running');
       await this.traceStore.updateTaskStatus(task.taskId, 'running', { startedAt: Date.now() });
 
-      this.eventBus.emit({
-        kind: 'task_started',
-        taskId: task.taskId,
-        instruction: task.instruction,
-        routedSkill: 'default',
-        startedAt: Date.now(),
-      });
-
+      const startedAt = Date.now();
       const controller = new AbortController();
       this.abortControllers.set(task.taskId, controller);
 
       try {
-        await this.executeTask(task, controller.signal);
+        const result = await this.executeTask(task, controller.signal);
+
+        this.taskStatus.set(task.taskId, result.success ? 'completed' : 'failed');
+        await this.traceStore.updateTaskStatus(task.taskId, result.success ? 'completed' : 'failed', {
+          finishedAt: Date.now(),
+          finishedReason: result.reason,
+          totalTokens: result.totalTokens,
+          routedSkill: result.routedSkill,
+        });
+
+        this.eventBus.emit({
+          kind: 'task_finished',
+          taskId: task.taskId,
+          success: result.success,
+          reason: result.reason,
+          durationMs: Date.now() - startedAt,
+          totalTokens: result.totalTokens,
+        });
       } catch (error) {
+        const msg = error instanceof Error ? error.message : 'unknown_error';
         this.taskStatus.set(task.taskId, 'failed');
         await this.traceStore.updateTaskStatus(task.taskId, 'failed', {
           finishedAt: Date.now(),
-          finishedReason: error instanceof Error ? error.message : 'unknown_error',
+          finishedReason: msg,
+        });
+
+        this.eventBus.emit({
+          kind: 'task_failed',
+          taskId: task.taskId,
+          error: { kind: 'unknown', message: msg },
         });
 
         this.eventBus.emit({
           kind: 'task_finished',
           taskId: task.taskId,
           success: false,
-          reason: error instanceof Error ? error.message : 'unknown_error',
-          durationMs: 0,
+          reason: msg,
+          durationMs: Date.now() - startedAt,
           totalTokens: 0,
         });
       } finally {
@@ -128,91 +164,101 @@ export class TaskQueueImpl implements TaskQueue {
     this.isProcessing = false;
   }
 
-  private async executeTask(task: { taskId: string; instruction: string; params?: Record<string, unknown> }, signal: AbortSignal): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+  /**
+   * 真实执行：SkillRouter 选 template → HarnessLoop 跑 ReAct → 返回结果
+   * 没有 deps（modelClient/harnessLoop 等）时降级为 mock，不至于 server 启动崩。
+   */
+  private async executeTask(
+    task: { taskId: string; instruction: string; params?: Record<string, unknown> },
+    signal: AbortSignal,
+  ): Promise<{ success: boolean; reason: string; totalTokens: number; routedSkill: string }> {
+    if (!this.deps || !this.deps.modelClient) {
+      throw new Error(
+        'cua-lark backend not fully wired: missing ModelClient (check CUA_VLM_BASE_URL / CUA_VLM_API_KEY / CUA_VLM_MODEL in .env). 不再使用 M4 mock 路径。',
+      );
+    }
+
+    const { skillRouter, skillRegistry, harnessLoop, operator, modelClient } = this.deps;
+
+    // 1. 路由：选 skill template
+    const templates = skillRegistry.list().map((s: any) => ({
+      name: s.name,
+      description: s.description ?? '',
+      systemPrompt: s.systemPrompt ?? '',
+      finishCriteria: s.finishCriteria ?? '',
+      maxLoopIterations: s.maxLoopIterations ?? 30,
+      toolWhitelist: s.toolWhitelist,
+      sideEffects: s.sideEffects,
+      fewShots: s.fewShots,
+    }));
+
+    if (templates.length === 0) {
+      throw new Error('No skill templates registered');
+    }
+
+    let routed: { template: any; params: Record<string, unknown>; confidence: number };
+    try {
+      routed = await skillRouter.route(task.instruction, {
+        model: modelClient,
+        templates,
+      });
+    } catch (err) {
+      throw new Error(`SkillRouter failed: ${err instanceof Error ? err.message : err}`);
+    }
 
     if (signal.aborted) {
-      return;
+      return { success: false, reason: 'cancelled', totalTokens: 0, routedSkill: routed.template?.name ?? '' };
     }
 
-    for (let i = 1; i <= 3; i++) {
-      if (signal.aborted) return;
-
-      this.eventBus.emit({
-        kind: 'iteration_started',
-        taskId: task.taskId,
-        iteration: i,
-        screenshotPath: `traces/${task.taskId}/screenshot-${i}.png`,
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const thoughts = ['我需要分析当前情况。', '让我检查一下界面。', '好的，我明白了。'];
-      for (const char of thoughts[i - 1]) {
-        if (signal.aborted) return;
-        this.eventBus.emit({
-          kind: 'thought_chunk',
-          taskId: task.taskId,
-          iteration: i,
-          delta: char,
-        });
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-
-      this.eventBus.emit({
-        kind: 'thought_complete',
-        taskId: task.taskId,
-        iteration: i,
-        full: thoughts[i - 1],
-        tokens: 10,
-      });
-
-      this.eventBus.emit({
-        kind: 'tool_call',
-        taskId: task.taskId,
-        iteration: i,
-        name: 'click',
-        args: { x: 100, y: 200 },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      this.eventBus.emit({
-        kind: 'tool_result',
-        taskId: task.taskId,
-        iteration: i,
-        success: true,
-        observation: '点击成功',
-        durationMs: 300,
-      });
-
-      this.eventBus.emit({
-        kind: 'iteration_complete',
-        taskId: task.taskId,
-        iteration: i,
-        durationMs: 1000,
-        cost: { tokens: 10 },
-      });
-    }
-
-    this.taskStatus.set(task.taskId, 'completed');
-    await this.traceStore.updateTaskStatus(task.taskId, 'completed', {
-      finishedAt: Date.now(),
-      finishedReason: 'message_sent',
-      totalTokens: 30,
-    });
-
+    // 2. emit task_started 含 routedSkill
     this.eventBus.emit({
-      kind: 'task_finished',
+      kind: 'task_started',
       taskId: task.taskId,
-      success: true,
-      reason: 'message_sent',
-      durationMs: 6000,
-      totalTokens: 30,
+      instruction: task.instruction,
+      routedSkill: routed.template.name,
+      startedAt: Date.now(),
     });
+
+    // 3. 跑 HarnessLoop
+    const ctx = {
+      operator,
+      model: modelClient,
+      trace: this.traceStore,
+      testRunId: task.taskId,
+      parentTraceId: task.taskId,
+      iteration: 0,
+      params: { ...(task.params || {}), ...(routed.params || {}) },
+      taskId: task.taskId,
+      config: {
+        maxLoopIterations: routed.template.maxLoopIterations ?? 30,
+        maxTokensPerSkill: 120000,
+        messageHistoryLimit: 5,
+        loopDetectionThreshold: 3,
+      },
+      logger: {
+        info: (...args: unknown[]) => console.log('[harness]', ...args),
+        warn: (...args: unknown[]) => console.warn('[harness]', ...args),
+        error: (...args: unknown[]) => console.error('[harness]', ...args),
+      },
+      signal,
+    };
+
+    const result = await harnessLoop.run(routed.template, ctx as any);
+
+    return {
+      success: result.success,
+      reason: result.finishedReason,
+      totalTokens: result.totalTokens,
+      routedSkill: routed.template.name,
+    };
   }
 }
 
-export function createTaskQueue(maxSize: number, eventBus: EventBus, traceStore: SqliteTraceStore): TaskQueue {
-  return new TaskQueueImpl(maxSize, eventBus, traceStore);
+export function createTaskQueue(
+  maxSize: number,
+  eventBus: EventBus,
+  traceStore: SqliteTraceStore,
+  deps?: TaskQueueDeps,
+): TaskQueue {
+  return new TaskQueueImpl(maxSize, eventBus, traceStore, deps);
 }

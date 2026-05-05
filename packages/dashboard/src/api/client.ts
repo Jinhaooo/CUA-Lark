@@ -1,5 +1,44 @@
 const API_BASE = '/api';
 
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, init);
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+function appendParams(path: string, params?: Record<string, string | number | boolean | undefined>): string {
+  if (!params) {
+    return path;
+  }
+
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      searchParams.set(key, String(value));
+    }
+  }
+
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+export const apiClient = {
+  get<T = any>(path: string, options?: { params?: Record<string, string | number | boolean | undefined> }): Promise<T> {
+    return request<T>(appendParams(path, options?.params));
+  },
+  post<T = any>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  },
+};
+
 export interface TaskSummary {
   id: string;
   instruction: string;

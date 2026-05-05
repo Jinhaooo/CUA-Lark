@@ -36,16 +36,24 @@ export class ModelClientImpl implements ModelClient {
       return { role: msg.role, content: msg.content };
     });
 
-    const response = await client.chat.completions.create(
-      {
+    const response = req.signal
+      ? await client.chat.completions.create(
+        {
+          model,
+          messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
+          temperature: req.temperature,
+          max_tokens: req.max_tokens,
+          response_format: req.response_format,
+        },
+        { signal: req.signal },
+      )
+      : await client.chat.completions.create({
         model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: req.temperature,
         max_tokens: req.max_tokens,
         response_format: req.response_format,
-      },
-      { signal: req.signal },
-    );
+      });
 
     const choice = response.choices[0];
     const message = choice?.message;
@@ -67,16 +75,16 @@ export class ModelClientImpl implements ModelClient {
       apiKey: env.apiKey,
     });
 
-    const response = await client.chat.completions.create(
-      {
-        model: req.modelOverride || env.model,
-        messages: req.messages as OpenAI.Chat.ChatCompletionMessageParam[],
-        temperature: req.temperature ?? 0,
-        max_tokens: req.max_tokens,
-        response_format: req.response_format,
-      },
-      { signal: req.signal },
-    );
+    const request = {
+      model: req.modelOverride || env.model,
+      messages: req.messages as OpenAI.Chat.ChatCompletionMessageParam[],
+      temperature: req.temperature ?? 0,
+      max_tokens: req.max_tokens,
+      response_format: req.response_format,
+    };
+    const response = req.signal
+      ? await client.chat.completions.create(request, { signal: req.signal })
+      : await client.chat.completions.create(request);
 
     const choice = response.choices[0];
     const message = choice?.message;

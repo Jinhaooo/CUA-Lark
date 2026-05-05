@@ -5,14 +5,32 @@ import { ulid } from 'ulid';
 import { ZodError } from 'zod';
 import type { EventBus } from '../trace/EventBus.js';
 import { StreamInterrupted } from '../model/streaming.js';
+import { SelfHealingExecutor, type SelfHealingConfig } from './SelfHealingExecutor.js';
+import { failureAnalystTool } from '../tools/verify/failure_analyst.js';
+import { RiskGate, type RiskGateConfig } from '../tools/RiskGate.js';
+import { loadRiskGateConfigFromYaml, toRiskGateConfig } from '../tools/RiskGateConfigLoader.js';
+import { PromptBuilder } from './PromptBuilder.js';
 
 export class HarnessLoop {
   private toolRegistry: ToolRegistry;
   private eventBus?: EventBus;
+  private selfHealingExecutor?: SelfHealingExecutor;
+  private riskGate: RiskGate;
 
-  constructor(toolRegistry: ToolRegistry, eventBus?: EventBus) {
+  constructor(
+    toolRegistry: ToolRegistry,
+    eventBus?: EventBus,
+    selfHealingConfig?: Partial<SelfHealingConfig>,
+    riskGateConfig?: Partial<RiskGateConfig>
+  ) {
     this.toolRegistry = toolRegistry;
     this.eventBus = eventBus;
+    if (selfHealingConfig !== null) {
+      this.selfHealingExecutor = new SelfHealingExecutor(selfHealingConfig);
+    }
+    this.riskGate = new RiskGate(
+      riskGateConfig ?? toRiskGateConfig(loadRiskGateConfigFromYaml())
+    );
   }
 
   private emit(event: any): void {
@@ -25,9 +43,19 @@ export class HarnessLoop {
   }
 
   async run(template: SkillTemplate, ctx: HarnessContext, signal?: AbortSignal): Promise<HarnessResult> {
+    return this.runInternal(template, ctx, signal, 0);
+  }
+
+  private async runInternal(
+    template: SkillTemplate,
+    ctx: HarnessContext,
+    signal: AbortSignal | undefined,
+    selfHealingRetryCount: number
+  ): Promise<HarnessResult> {
     const trace: HarnessTrace[] = [];
     let totalTokens = 0;
-    const messages: any[] = [{ role: 'system', content: template.systemPrompt }];
+    const systemPrompt = new PromptBuilder(this.toolRegistry).build(template);
+    const messages: any[] = [{ role: 'system', content: systemPrompt }];
     const recentToolCalls: string[] = [];
 
     const maxIterations = template.maxLoopIterations ?? ctx.config.maxLoopIterations;
@@ -65,7 +93,7 @@ export class HarnessLoop {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshot.base64}` } },
-          { type: 'text', text: 'What should I do next? Output in JSON format with thought and tool_call.' },
+          { type: 'text', text: '请观察当前截图，决定下一步操作。严格按 JSON 输出 thought（中文）和 tool_call。' },
         ],
       };
 
@@ -97,8 +125,15 @@ export class HarnessLoop {
             timeoutMs: modelRequestTimeoutMs,
           });
 
+          const retryNudge = {
+            role: 'user' as const,
+            content: '上次回复未通过 JSON 解析。请严格输出 {"thought":"...","tool_call":{"name":"工具名","args":{...}}}，不要在 JSON 之外附加任何文字。如果你认为任务已经完成，请调用 finished 工具：{"thought":"已完成","tool_call":{"name":"finished","args":{"success":true,"reason":"任务完成原因"}}}',
+          };
+          const visionMessages = retry === 0
+            ? [...recentMessages, userMessage]
+            : [...recentMessages, userMessage, retryNudge];
           const visionRequest = {
-            messages: [...recentMessages, userMessage],
+            messages: visionMessages,
             modelOverride: ctx.config.vlmModel,
             response_format: { type: 'json_object' },
             signal: requestSignal.signal,
@@ -109,6 +144,18 @@ export class HarnessLoop {
               for await (const chunk of ctx.model.chatVisionStream(visionRequest)) {
                 if (requestSignal.signal.aborted) {
                   throw new Error(requestSignal.reason());
+                }
+                // Reasoning models (qwen3.x reasoning / deepseek-r1 等) 把 CoT
+                // 放在 reasoning_content。前端展示需要它，但不能混入 thought
+                // 缓冲（否则后续 JSON 解析失败）。
+                const reasoningDelta = (chunk as { reasoningDelta?: string }).reasoningDelta;
+                if (reasoningDelta) {
+                  this.emit({
+                    kind: 'thought_chunk',
+                    taskId: ctx.testRunId,
+                    iteration,
+                    delta: reasoningDelta,
+                  });
                 }
                 thought += chunk.delta;
                 if (chunk.delta) {
@@ -277,19 +324,105 @@ export class HarnessLoop {
           reason: toolCall.args?.reason,
         });
 
+        const finishedSuccess = toolCall.args?.success === true;
+        const finishedReason = toolCall.args?.reason || 'finished';
+
+        if (!finishedSuccess && this.selfHealingExecutor) {
+          const retryCount = selfHealingRetryCount;
+          const iterationsBefore = iteration;
+
+          if (this.selfHealingExecutor.shouldRetry(finishedReason, retryCount)) {
+            const screenshot = await ctx.operator.screenshot();
+            const screenshotBase64 = screenshot.base64;
+
+            this.emit({
+              kind: 'self_healing_attempted',
+              taskId: ctx.testRunId,
+              reason: finishedReason,
+              confidence: 1.0,
+            });
+
+            const analysisResult = await this.selfHealingExecutor.analyze(
+              trace,
+              finishedReason,
+              screenshotBase64,
+              async (traceEntries, reason, screenshot) => {
+                const result = await failureAnalystTool.execute(ctx as any, {
+                  trace: traceEntries,
+                  finishedReason: reason,
+                  screenshotBase64: screenshot,
+                });
+                return result.data || {
+                  errorKind: 'unknown',
+                  rootCause: reason,
+                  alternativeStrategy: 'Review manually',
+                  confidence: 0,
+                };
+              }
+            );
+
+            const skipCause = this.selfHealingExecutor.getSkipCause(finishedReason, analysisResult.confidence, retryCount);
+
+            if (skipCause) {
+              this.emit({
+                kind: 'self_healing_skipped',
+                taskId: ctx.testRunId,
+                reason: finishedReason,
+                skipCause,
+              });
+            } else {
+              const newSystemPrompt = this.selfHealingExecutor.buildRetryPrompt(
+                template.systemPrompt,
+                analysisResult
+              );
+
+              this.emit({
+                kind: 'self_healing_succeeded',
+                taskId: ctx.testRunId,
+                iterationsBefore,
+                iterationsAfter: iteration + 1,
+              });
+
+              const retryResult = await this.runInternal(
+                { ...template, systemPrompt: newSystemPrompt },
+                ctx,
+                signal,
+                retryCount + 1
+              );
+
+              return {
+                ...retryResult,
+                iterations: iterationsBefore + retryResult.iterations,
+                trace: [...trace, ...retryResult.trace],
+                totalTokens: totalTokens + retryResult.totalTokens,
+              };
+            }
+          } else {
+            const skipCause = this.selfHealingExecutor.getSkipCause(finishedReason, 0, retryCount);
+            if (skipCause) {
+              this.emit({
+                kind: 'self_healing_skipped',
+                taskId: ctx.testRunId,
+                reason: finishedReason,
+                skipCause,
+              });
+            }
+          }
+        }
+
         const durationMs = Date.now() - startTime;
         this.emit({
           kind: 'task_finished',
           taskId: ctx.testRunId,
-          success: toolCall.args?.success === true,
-          reason: toolCall.args?.reason || 'finished',
+          success: finishedSuccess,
+          reason: finishedReason,
           durationMs,
           totalTokens,
         });
 
         return {
-          success: toolCall.args?.success === true,
-          finishedReason: toolCall.args?.reason || 'finished',
+          success: finishedSuccess,
+          finishedReason,
           iterations: iteration,
           trace,
           totalTokens,
@@ -351,6 +484,22 @@ export class HarnessLoop {
         args: toolCall.args,
       });
 
+      // 工具执行前再次检查 abort：流式响应可能在用户按 stop 后才解析完，
+      // 这里拦截一次避免 stop 后还执行一次鼠标/键盘动作
+      if (signal?.aborted) {
+        this.emit({
+          kind: 'task_cancelled',
+          taskId: ctx.testRunId,
+        });
+        return {
+          success: false,
+          finishedReason: 'cancelled',
+          iterations: iteration,
+          trace,
+          totalTokens,
+        };
+      }
+
       const toolStartTime = Date.now();
       let observation: string;
       let success = true;
@@ -362,11 +511,19 @@ export class HarnessLoop {
 
         const tool = this.toolRegistry.get(toolCall.name);
         if (!tool || (template.toolWhitelist && !template.toolWhitelist.includes(toolCall.name))) {
-          observation = `Unknown or unavailable tool: ${toolCall.name}`;
+          const availableNames = this.toolRegistry
+            .list({ whitelist: template.toolWhitelist })
+            .map((t) => t.name);
+          observation =
+            `工具调用错误：不存在名为 "${toolCall.name}" 的工具。\n` +
+            `你只能从以下已注册工具中选择（必须严格匹配名称）：\n${availableNames.map((n) => `- ${n}`).join('\n')}\n` +
+            `请重新选择一个上面列出的工具，并用 {"thought":"...","tool_call":{"name":"<上面工具名>","args":{...}}} 重发。如果任务已完成，必须调用 finished。`;
           success = false;
         } else {
           const args = tool.argsSchema.parse(toolCall.args ?? {});
-          const result = await tool.execute(ctx as any, args);
+          const result = tool.category === 'meta' || this.riskGate.shouldSkipRiskGate(template.name)
+            ? await tool.execute(ctx as any, args)
+            : await this.riskGate.executeWithRiskGate(tool, ctx as any, args, this.eventBus);
           observation = result.observation;
           success = result.success;
         }
@@ -504,8 +661,44 @@ function normalizeToolCall(toolCall: any): any {
     args: toolCall.args && typeof toolCall.args === 'object' ? { ...toolCall.args } : toolCall.args,
   };
 
-  if (normalized.name === 'input_text' || normalized.name === 'type_text') {
+  if (normalized.name === 'input_text' || normalized.name === 'type_text' || normalized.name === 'enter_text' || normalized.name === 'write') {
     normalized.name = 'type';
+  }
+
+  if (normalized.name === 'press_key' || normalized.name === 'key' || normalized.name === 'keypress' || normalized.name === 'shortcut') {
+    normalized.name = 'hotkey';
+  }
+
+  if (normalized.name === 'take_screenshot' || normalized.name === 'capture' || normalized.name === 'snapshot') {
+    normalized.name = 'screenshot';
+  }
+
+  if (normalized.name === 'left_double') {
+    normalized.name = 'double_click';
+  }
+  if (normalized.name === 'right_single') {
+    normalized.name = 'right_click';
+  }
+  if (normalized.name === 'left_click') {
+    normalized.name = 'click';
+  }
+
+  if (
+    normalized.name === 'stop' ||
+    normalized.name === 'done' ||
+    normalized.name === 'complete' ||
+    normalized.name === 'task_complete' ||
+    normalized.name === 'task_finished' ||
+    normalized.name === 'finish'
+  ) {
+    const args = (normalized.args as Record<string, unknown>) ?? {};
+    const status = args.status as string | undefined;
+    const success = args.success;
+    normalized.name = 'finished';
+    normalized.args = {
+      success: typeof success === 'boolean' ? success : status !== 'failed',
+      reason: (args.reason as string) ?? (args.message as string) ?? '任务完成',
+    };
   }
 
   if (

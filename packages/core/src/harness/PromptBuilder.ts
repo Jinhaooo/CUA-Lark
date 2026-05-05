@@ -11,27 +11,31 @@ export class PromptBuilder {
   build(template: SkillTemplate): string {
     const parts: string[] = [];
 
-    parts.push(`You are a task-oriented assistant for Lark (Feishu) desktop client.`);
-    parts.push(`Your goal: ${template.description}`);
+    parts.push(`你是飞书（Lark）桌面客户端的任务执行助手。请始终用中文进行思考（thought）和回答。`);
+    parts.push(`本次任务目标：${template.description}`);
     parts.push('');
 
-    parts.push('## Task Objective');
-    parts.push(template.systemPrompt);
-    parts.push('');
+    if (template.systemPrompt && template.systemPrompt.trim()) {
+      parts.push('## 任务说明');
+      parts.push(template.systemPrompt);
+      parts.push('');
+    }
 
-    parts.push('## Completion Criteria');
-    parts.push(template.finishCriteria);
-    parts.push('');
+    if (template.finishCriteria && template.finishCriteria.trim()) {
+      parts.push('## 完成判据');
+      parts.push(template.finishCriteria);
+      parts.push('');
+    }
 
-    parts.push('## Available Tools');
+    parts.push('## 可用工具');
     const tools = this.toolRegistry.toSystemPromptSection(template.toolWhitelist);
     parts.push(tools);
     parts.push('');
 
     if (template.fewShots && template.fewShots.length > 0) {
-      parts.push('## Examples');
+      parts.push('## 示例');
       template.fewShots.forEach((shot: HarnessTrace[], index: number) => {
-        parts.push(`### Example ${index + 1}`);
+        parts.push(`### 示例 ${index + 1}`);
         shot.forEach((step: HarnessTrace) => {
           parts.push(`- Thought: ${step.thought}`);
           parts.push(`  Action: ${step.toolCall.name}(${JSON.stringify(step.toolCall.args)})`);
@@ -41,13 +45,16 @@ export class PromptBuilder {
       parts.push('');
     }
 
-    parts.push('## Output Format');
-    parts.push('You MUST output in JSON format:');
+    parts.push('## 输出格式');
+    parts.push('你必须严格输出以下 JSON（thought 字段用中文）：');
     parts.push('```json');
-    parts.push('{"thought": "your reasoning here", "tool_call": {"name": "tool_name", "args": {...}}}');
+    parts.push('{"thought": "本步推理（中文）", "tool_call": {"name": "工具名", "args": {...}}}');
     parts.push('```');
-    parts.push('');
-    parts.push('Do NOT include any other text outside the JSON block.');
+    parts.push('不要在 JSON 之外输出任何额外文字。任何场景都必须以工具调用作为回应——包括任务已完成时也必须调用 `finished` 工具，例如：');
+    parts.push('```json');
+    parts.push('{"thought": "消息已发送成功，任务完成。", "tool_call": {"name": "finished", "args": {"success": true, "reason": "消息已发送"}}}');
+    parts.push('```');
+    parts.push('避免连续多次重复同一动作（例如反复 screenshot），每一步都要在前一步观察基础上推进。');
 
     return parts.join('\n');
   }

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tool } from '../types.js';
 
 export const ocrLocateTool: Tool<
-  { text: string; region?: { x1: number; y1: number; x2: number; y2: number } },
+  { text: string; region?: { x1: number; y1: number; x2: number; y2: number } | null },
   { x1: number; y1: number; x2: number; y2: number } | null
 > = {
   name: 'ocr_locate',
@@ -14,7 +14,7 @@ export const ocrLocateTool: Tool<
       y1: z.number(),
       x2: z.number(),
       y2: z.number(),
-    }).optional(),
+    }).nullish(),
   }),
   async execute(ctx, args) {
     if (!ctx.ocr) {

@@ -1,5 +1,3 @@
-import axios from 'axios';
-import axiosRetry from 'axios-retry';
 import CircuitBreaker from 'opossum';
 
 export interface ResilienceConfig {
@@ -32,7 +30,7 @@ function getCircuitBreaker(name: string, config: Required<ResilienceConfig>): Ci
   let cb = circuitBreakers.get(name);
   if (!cb) {
     cb = new CircuitBreaker(
-      () => Promise.resolve(),
+      ((action: () => Promise<unknown>) => action()) as (...args: unknown[]) => unknown,
       {
         failureThreshold: config.circuitBreaker.failureThreshold,
         resetTimeout: config.circuitBreaker.resetMs,
@@ -54,26 +52,21 @@ export async function withResilience<T>(
   const retriesRef = { value: 0 };
 
   const wrappedFn = async (): Promise<T> => {
-    retriesRef.value = 0;
-    
-    const axiosInstance = axios.create({
-      timeout: config.timeoutMs,
-    });
+    let lastError: unknown;
 
-    axiosRetry(axiosInstance, {
-      retries: config.retries,
-      retryDelay: (retryCount) => {
-        retriesRef.value = retryCount;
-        return Math.pow(2, retryCount) * 1000;
-      },
-      retryCondition: (error) => {
-        return axiosRetry.isNetworkError(error) || 
-               axiosRetry.isRetryableError(error) ||
-               (error.response?.status !== undefined && error.response.status >= 500);
-      },
-    });
+    for (let attempt = 0; attempt <= config.retries; attempt++) {
+      try {
+        retriesRef.value = attempt;
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (attempt >= config.retries) {
+          break;
+        }
+      }
+    }
 
-    return fn();
+    throw lastError;
   };
 
   const result = await circuitBreaker.fire(wrappedFn);
@@ -81,7 +74,7 @@ export async function withResilience<T>(
   return {
     data: result as T,
     retries: retriesRef.value,
-    circuitBreakerState: circuitBreaker.state as 'closed' | 'open' | 'halfOpen',
+    circuitBreakerState: getCircuitBreakerState(breakerName) as 'closed' | 'open' | 'halfOpen',
   };
 }
 
@@ -105,12 +98,22 @@ export async function withResilienceStream<T>(
 
 export function getCircuitBreakerState(name: string = 'default'): 'closed' | 'open' | 'halfOpen' | 'unknown' {
   const cb = circuitBreakers.get(name);
-  return cb ? (cb.state as 'closed' | 'open' | 'halfOpen') : 'unknown';
+  if (!cb) {
+    return 'unknown';
+  }
+  if ((cb as any).opened) {
+    return 'open';
+  }
+  if ((cb as any).halfOpen) {
+    return 'halfOpen';
+  }
+  return 'closed';
 }
 
 export function resetCircuitBreaker(name: string = 'default'): void {
   const cb = circuitBreakers.get(name);
   if (cb) {
-    cb.reset();
+    (cb as any).close();
+    circuitBreakers.delete(name);
   }
 }

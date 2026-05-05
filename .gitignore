@@ -3,9 +3,19 @@ dist/
 .turbo/
 *.dist/
 traces/
+runs/
+bench-reports/
 *.log
 .env
 .env.*
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# spec drafts & local working notes (not for upstream)
+CUA-Lark-Spec-v*.md
+CUA-Lark-Spec-v*
+
+# binaries / installers
+*.msi
+*.exe

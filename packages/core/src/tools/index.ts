@@ -10,6 +10,7 @@ export { ocrLocateTool } from './perceive/ocr_locate.js';
 export { ocrReadTool } from './perceive/ocr_read.js';
 export { vlmLocateTool } from './perceive/vlm_locate.js';
 export { readStateTool } from './perceive/read_state.js';
+export { waitForLoadingTool } from './perceive/wait_for_loading.js';
 
 export { clickTool } from './act/click.js';
 export { doubleClickTool } from './act/double_click.js';
@@ -25,8 +26,12 @@ export { verifyVlmTool } from './verify/verify_vlm.js';
 export { verifyOcrTool } from './verify/verify_ocr.js';
 export { verifyPixelTool } from './verify/verify_pixel.js';
 export { verifyA11yTool } from './verify/verify_a11y.js';
+export { riskClassifierTool } from './verify/risk_classifier.js';
+export { failureAnalystTool } from './verify/failure_analyst.js';
 
 export { finishedTool } from './meta/finished.js';
 export { callUserTool } from './meta/call_user.js';
 export type { CallUserRequired } from './meta/call_user.js';
 export { recordEvidenceTool } from './meta/record_evidence.js';
+export { askUserTool, RiskConfirmationRegistry } from './meta/ASK_USER.js';
+export type { RiskConfirmationResult, RiskConfirmationContext } from './meta/ASK_USER.js';

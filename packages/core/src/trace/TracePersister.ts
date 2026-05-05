@@ -206,6 +206,103 @@ export class TracePersister {
             iterations: event.iterations,
           },
         };
+      case 'risk_evaluation_complete':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'risk_evaluation_complete' as any,
+          name: event.toolName,
+          status,
+          started_at: Date.now(),
+          ended_at: Date.now(),
+          payload: {
+            toolName: event.toolName,
+            args: event.args,
+            riskLevel: event.riskLevel,
+            reason: event.reason,
+          },
+        };
+      case 'risk_confirmation_required':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'risk_confirmation_required' as any,
+          name: event.action.name,
+          status,
+          started_at: Date.now(),
+          payload: {
+            action: event.action,
+            riskLevel: event.riskLevel,
+            reason: event.reason,
+            question: event.question,
+          },
+        };
+      case 'risk_confirmation_received':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'risk_confirmation_received' as any,
+          name: event.toolName,
+          status: event.confirmed ? 'passed' : 'failed',
+          started_at: Date.now(),
+          ended_at: Date.now(),
+          payload: {
+            confirmed: event.confirmed,
+            source: event.source,
+            reason: event.reason,
+          },
+        };
+      case 'risk_approved':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'risk_approved' as any,
+          name: event.toolName,
+          status: 'passed',
+          started_at: Date.now(),
+          ended_at: Date.now(),
+        };
+      case 'self_healing_attempted':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'self_healing_attempted' as any,
+          name: 'self_healing_attempted',
+          status,
+          started_at: Date.now(),
+          payload: {
+            reason: event.reason,
+            confidence: event.confidence,
+          },
+        };
+      case 'self_healing_succeeded':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'self_healing_succeeded' as any,
+          name: 'self_healing_succeeded',
+          status: 'passed',
+          started_at: Date.now(),
+          ended_at: Date.now(),
+          payload: {
+            iterationsBefore: event.iterationsBefore,
+            iterationsAfter: event.iterationsAfter,
+          },
+        };
+      case 'self_healing_skipped':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'self_healing_skipped' as any,
+          name: 'self_healing_skipped',
+          status: 'failed',
+          started_at: Date.now(),
+          ended_at: Date.now(),
+          payload: {
+            reason: event.reason,
+            skipCause: event.skipCause,
+          },
+        };
       default:
         return null;
     }

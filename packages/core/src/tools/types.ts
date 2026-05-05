@@ -33,7 +33,9 @@ export type ErrorKind =
   | 'max_iterations_reached'
   | 'vlm_loop_detected'
   | 'tool_call_parse_failed'
-  | 'budget_exceeded';
+  | 'budget_exceeded'
+  | 'risk_denied'
+  | 'risk_timeout_denied';
 
 export interface ToolRegistry {
   register(tool: Tool): void;

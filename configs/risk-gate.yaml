@@ -1,0 +1,56 @@
+riskClassification:
+  destructiveTools:
+    - delete_chat
+    - delete_message
+    - delete_event
+    - delete_doc
+    - dismiss_group
+    - leave_group
+    - clear_recall
+    - permanent_delete
+    - batch_delete
+  highRiskKeywords:
+    - delete
+    - remove
+    - dismiss
+    - clear
+    - recall
+    - revoke
+    - archive
+    - trash
+    - destroy
+    - 注销
+    - 解散
+    - 清空
+    - 永久
+  mediumRiskKeywords:
+    - edit
+    - modify
+    - update
+    - move
+    - copy
+    - share
+    - invite
+    - transfer
+
+riskGate:
+  confirmationTimeoutMs: 60000
+  autoApprovedLevels: []
+  skipForSkills:
+    - cleanup_im_messages
+    - cleanup_calendar_events
+    - cleanup_docs
+
+riskLevels:
+  destructive:
+    requiresConfirmation: true
+    autoApprove: false
+  high:
+    requiresConfirmation: true
+    autoApprove: false
+  medium:
+    requiresConfirmation: false
+    autoApprove: false
+  low:
+    requiresConfirmation: false
+    autoApprove: true

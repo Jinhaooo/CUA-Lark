@@ -31,6 +31,9 @@ import { sanitizeState } from './utils/sanitizeState';
 import { windowManager } from './services/windowManager';
 import { checkBrowserAvailability } from './services/browserCheck';
 import { setupEscapeStop } from './services/escapeStop';
+import { sseDispatcher } from './services/sseDispatcher';
+import { createOverlayWindow } from './window/overlayBrowserWindow';
+import { startDashboardDevServer, stopDashboardDevServer } from './services/dashboardDevServer';
 
 const { isProd } = env;
 
@@ -58,16 +61,18 @@ const loadDevDebugTools = async () => {
   });
 
   import('electron-devtools-installer')
-    .then(({ default: installExtensionDefault, REACT_DEVELOPER_TOOLS }) => {
-      // @ts-ignore
-      const installExtension = installExtensionDefault?.default;
-      const extensions = [installExtension(REACT_DEVELOPER_TOOLS)];
-
-      return Promise.all(extensions)
-        .then((names) => logger.info('Added Extensions:', names.join(', ')))
-        .catch((err) =>
-          logger.error('An error occurred adding extension:', err),
-        );
+    .then((mod: any) => {
+      // electron-devtools-installer exports differ across CJS/ESM bundlings:
+      // sometimes the function is mod.default, sometimes mod.default.default.
+      const installExtension = typeof mod.default === 'function' ? mod.default : mod.default?.default;
+      const REACT_DEVELOPER_TOOLS = mod.REACT_DEVELOPER_TOOLS;
+      if (typeof installExtension !== 'function' || !REACT_DEVELOPER_TOOLS) {
+        logger.warn('[devtools] React DevTools installer unavailable — skipping');
+        return;
+      }
+      return installExtension(REACT_DEVELOPER_TOOLS)
+        .then((name: string) => logger.info('Added Extensions:', name))
+        .catch((err: unknown) => logger.error('An error occurred adding extension:', err));
     })
     .catch(logger.error);
 };
@@ -98,6 +103,18 @@ const initializeApp = async () => {
 
   logger.info('createMainWindow');
   let mainWindow = createMainWindow();
+
+  logger.info('createOverlayWindow');
+  const overlayWin = createOverlayWindow();
+  if (!overlayWin) {
+    logger.info('[main] Overlay window not created (disabled or no renderer source). Chat-only mode.');
+  }
+
+  logger.info('initializeSseDispatcher');
+  sseDispatcher.initialize();
+
+  // Auto-start the embedded dashboard's vite dev server (no-op in prod).
+  void startDashboardDevServer();
 
   session.defaultSession.setDisplayMediaRequestHandler(
     (_request, callback) => {
@@ -135,6 +152,8 @@ const initializeApp = async () => {
   app.on('quit', () => {
     logger.info('app quit');
     unsubscribe();
+    sseDispatcher.shutdown();
+    stopDashboardDevServer();
   });
 
   app.on('activate', () => {

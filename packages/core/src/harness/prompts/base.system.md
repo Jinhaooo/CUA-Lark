@@ -59,9 +59,10 @@
 
 ## 平台限制（Lark 桌面端）
 
-飞书桌面端是 Electron/Chromium 应用，**完全不向 Windows UIA 暴露内部控件树**——`uia_find` / `uia_find_all` 在飞书窗口内**永远返回 No matching element**。这不是参数错、不是控件名拼错、不是要换 role，是 Electron 本身没接 a11y。
+飞书桌面端是 Electron/Chromium 应用，UIA 树**仅在系统 a11y 启用后才有内容**。本会话是否启用，**以下文 "## 可用工具" 段是否列出 `uia_find` 为准**：
 
-**结论**：在飞书界面定位元素时，**直接用 `ocr_locate` / `vlm_locate` / 截图肉眼判断**，不要先尝试 UIA。试 UIA 是确定性浪费一轮。仅当截图里能确认目标是非飞书的系统级 UI（资源管理器、原生对话框）才考虑 UIA。
+- **列出 `uia_find`** → a11y 已启用，UIA 可用。优先 UIA → OCR → VLM 的降级顺序定位元素
+- **未列出 `uia_find`** → 本会话 a11y 未启用，UIA 工具已被禁用。直接 `ocr_locate` / `vlm_locate` / 截图肉眼判断；**不要去自创 uia_find 调用**（不在白名单会按工具幻觉处理）
 
 ---
 

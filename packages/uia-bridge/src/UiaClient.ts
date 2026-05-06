@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { fileURLToPath } from 'url';
 import type { UiaElement, UiaFindSpec, UiaHealthResult, UiaRole } from './types.js';
 
 interface JsonRpcRequest {
@@ -64,8 +65,15 @@ export class UiaClient {
   }
 
   private getScriptPath(): string {
-    const scriptDir = new URL('.', import.meta.url).pathname.replace(/^\/(.):/, '$1:');
-    return `${scriptDir}\\server.ps1`;
+    // import.meta.url is `file:///C:/Program%20Files/...` — pathname keeps the
+    // %20-style URL escapes. Without decodeURIComponent, the resulting path
+    // contains literal "%20" which PowerShell can't resolve, the bridge fails
+    // to spawn, and every isA11yEnabled call falls back to {enabled:false,
+    // nodeCount:0}. Use fileURLToPath which handles %-decoding + drive prefix
+    // for us, then rewrite separators to \ for PowerShell's -File arg.
+    const url = new URL('server.ps1', import.meta.url);
+    const fsPath = fileURLToPath(url);
+    return fsPath;
   }
 
   private async sendRequest(method: string, params: Record<string, unknown> = {}): Promise<unknown> {

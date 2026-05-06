@@ -56,9 +56,19 @@ async function main() {
   // The constructor never throws — its methods return null when the bridge
   // process fails to start. We probe `isA11yEnabled` to log status.
   const uiaClient = new UiaClient();
+  // Adaptive disablement: if a11y is off, expose no uia_* tools to the agent.
+  // The bridge probe counts top-level Lark window descendants; <50 means
+  // Electron isn't projecting its accessibility tree (the S0 baseline from
+  // docs/uia-feasibility-report-v2.md). Cached at boot — restart server after
+  // toggling Narrator / a11y to re-evaluate.
+  let uiaA11yEnabled = false;
   try {
     const health = await uiaClient.isA11yEnabled();
+    uiaA11yEnabled = health.enabled;
     console.log(`[server] UiaClient initialized: enabled=${health.enabled} nodeCount=${health.nodeCount}`);
+    if (!health.enabled) {
+      console.log('[server] a11y disabled → uia_find / uia_find_all / verify_a11y will be hidden from the agent. Run Windows Narrator once to enable (see README "Enable a11y for UIA").');
+    }
   } catch (err) {
     console.warn('[server] UiaClient health probe failed:', err instanceof Error ? err.message : err);
   }
@@ -121,6 +131,8 @@ async function main() {
     modelClient,
     uia: uiaClient,
     ocr: ocrClient,
+    uiaA11yEnabled,
+    toolRegistry,
   });
 
   await registerRoutes(server, {

@@ -124,6 +124,13 @@ export interface TaskQueueDeps {
    *  ctx.uia / ctx.ocr presence and report "not available" when undefined. */
   uia?: unknown;
   ocr?: unknown;
+  /** Cached at boot — true when Lark's UIA tree has ≥50 descendants
+   *  (Narrator-triggered a11y on Electron). False → uia_* tools are filtered
+   *  out of the per-task whitelist so the agent can't waste turns on them. */
+  uiaA11yEnabled?: boolean;
+  /** Used to enumerate all registered tool names when computing the
+   *  uia-disabled whitelist (template.toolWhitelist = full minus uia_*). */
+  toolRegistry?: { list: () => Array<{ name: string }> };
 }
 
 export class TaskQueueImpl implements TaskQueue {
@@ -339,7 +346,19 @@ export class TaskQueueImpl implements TaskQueue {
       );
     }
 
-    const { harnessLoop, operator, modelClient, skillRegistry } = this.deps;
+    const { harnessLoop, operator, modelClient, skillRegistry, uiaA11yEnabled, toolRegistry } = this.deps;
+
+    // Adaptive UIA disablement (per docs/uia-feasibility-report-v2.md):
+    // when Lark's UIA tree is empty (a11y off), drop uia_* tools from the
+    // per-task whitelist so the agent isn't tempted to call them. Leaves
+    // verify_a11y in too, which depends on the same a11y substrate.
+    let toolWhitelist: string[] | undefined;
+    if (uiaA11yEnabled === false && toolRegistry) {
+      const UIA_TOOLS = new Set(['uia_find', 'uia_find_all', 'verify_a11y']);
+      toolWhitelist = toolRegistry.list()
+        .map((t) => t.name)
+        .filter((n) => !UIA_TOOLS.has(n));
+    }
 
     // Free-exploration mode: skill router is bypassed. The agent receives the
     // raw instruction + atomic tools + a "可用技能" catalog of registered
@@ -353,7 +372,7 @@ export class TaskQueueImpl implements TaskQueue {
         systemPrompt: '',
         finishCriteria: '',
         maxLoopIterations: 30,
-        toolWhitelist: undefined,
+        toolWhitelist,
         sideEffects: undefined,
         fewShots: undefined,
         skillDir: undefined,

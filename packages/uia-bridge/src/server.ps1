@@ -14,6 +14,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Force UTF-8 on stdin/stdout. Node writes JSON to stdin in utf-8, but on
+# Chinese Windows ([Console] default code page is 936/GBK) the PS console reads
+# the bytes as GBK — non-ASCII chars get mangled and even pure-ASCII payloads
+# can fail with a BOM/codepage signature mismatch, leading to parse_error
+# responses and nodeCount=0 at the UiaClient side. UTF-8 on both ends fixes it.
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Load UIAutomation. WindowsBase is needed for the underlying types. These
 # assemblies ship with .NET Framework on every Windows install.
 Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
@@ -42,22 +50,20 @@ function Get-ForegroundProcessId {
 }
 
 function Find-LarkWindow {
-    $procId = Get-ForegroundProcessId
-    if ($procId -le 0) { return $null }
+    # Foreground-only lookup misses Lark whenever the user has another window
+    # focused — leads to spurious "client not available" / enabled=false. Walk
+    # the live process list instead and find any Lark/Feishu process whose
+    # MainWindowHandle is non-zero, then resolve via AutomationElement.FromHandle.
+    $proc = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        ($_.ProcessName -match '(Lark|Feishu)' -or $_.ProcessName -like "*$LarkProcessName*") -and
+        $_.MainWindowHandle -ne [IntPtr]::Zero
+    } | Select-Object -First 1
+    if (-not $proc) { return $null }
     try {
-        $proc = Get-Process -Id $procId -ErrorAction Stop
-    } catch { return $null }
-
-    if ($proc.ProcessName -notmatch '(Lark|Feishu)' -and
-        $proc.ProcessName -notlike "*$LarkProcessName*") {
+        return [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+    } catch {
         return $null
     }
-    $cond = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $procId
-    )
-    return [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-        [System.Windows.Automation.TreeScope]::Children, $cond
-    )
 }
 
 $ROLE_MAP = @{
@@ -112,16 +118,22 @@ function Test-NameMatch([string]$actual, [string]$pattern) {
 }
 
 function Measure-NodeCount($root, [int]$maxCount = 1000) {
-    $count = 0
+    # Count descendants, not direct children. The original walker-siblings
+    # loop only saw the top-level Pane(s) of an Electron window — typically
+    # 3-5 nodes — so the (n -ge 50) gate at the call site always returned
+    # enabled=false even when a11y was on (Narrator-triggered tree had ~328
+    # descendants per docs/uia-feasibility-report-v2.md).
     try {
-        $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
-        $node = $walker.GetFirstChild($root)
-        while ($node -and $count -lt $maxCount) {
-            $count++
-            $node = $walker.GetNextSibling($node)
-        }
-    } catch {}
-    return $count
+        $found = $root.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition
+        )
+        $n = $found.Count
+        if ($n -gt $maxCount) { return $maxCount }
+        return $n
+    } catch {
+        return 0
+    }
 }
 
 function Invoke-FindElement($win, $params) {

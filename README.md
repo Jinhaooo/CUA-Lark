@@ -1,5 +1,7 @@
 # CUA-Lark
 
+> English · [中文](./README.zh-CN.md)
+
 CUA-Lark is a TypeScript workspace for running computer-use agents against the Lark / Feishu desktop client. The agent perceives the screen with a VLM, plans the next action through a ReAct prompt loop, and executes desktop actions via NutJS-based operators with optional UIA / OCR fallbacks. Risky operations route through a confirmation gate before execution.
 
 ## Highlights

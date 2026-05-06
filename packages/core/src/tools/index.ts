@@ -36,3 +36,5 @@ export type { CallUserRequired } from './meta/call_user.js';
 export { recordEvidenceTool } from './meta/record_evidence.js';
 export { askUserTool, RiskConfirmationRegistry } from './meta/ASK_USER.js';
 export type { RiskConfirmationResult, RiskConfirmationContext } from './meta/ASK_USER.js';
+export { loadSkillTool } from './meta/load_skill.js';
+export type { SkillCatalog } from './types.js';

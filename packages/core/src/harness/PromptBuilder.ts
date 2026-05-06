@@ -16,6 +16,11 @@ export interface SkillContext {
    *  rendered as a "## 任务参数" section so the agent doesn't treat literal
    *  parameter names like `text` as the value to type. */
   params?: Record<string, unknown>;
+  /** All registered skills the agent can load on demand. Rendered as the
+   *  "## 可用技能" section so the agent can decide whether/which to load via
+   *  the load_skill tool. Bodies are NOT inlined here — load_skill appends
+   *  them post-hoc to messages[0]. */
+  availableSkills?: Array<{ name: string; description: string }>;
 }
 
 const REQUIRED_SNIPPETS = [
@@ -86,6 +91,8 @@ export class PromptBuilder {
     sections.push(this.selectSnippets(ctx).join('\n\n'));
 
     // DYNAMIC region
+    const skillCatalog = this.renderAvailableSkills(ctx);
+    if (skillCatalog) sections.push(skillCatalog);
     sections.push(this.renderSkillInstance(template, ctx));
     const fewshots = this.renderFewshots(ctx);
     if (fewshots) sections.push(fewshots);
@@ -93,6 +100,23 @@ export class PromptBuilder {
     const final = sections.filter(Boolean).join(SECTION_SEPARATOR);
     assertBudget('total', final, PROMPT_BUDGETS.total);
     return final;
+  }
+
+  private renderAvailableSkills(ctx?: SkillContext): string {
+    const skills = ctx?.availableSkills?.filter((s) => s.name && s.name.trim());
+    if (!skills || skills.length === 0) return '';
+    const lines = skills.map((s) => {
+      const desc = (s.description || '').trim().replace(/\s+/g, ' ');
+      const truncated = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
+      return `- \`${s.name}\` — ${truncated}`;
+    });
+    return [
+      '## 可用技能',
+      '',
+      '注册表中的可加载技能。判断本次任务匹配其中某个时，调 `load_skill({"name":"..."})` 把它的完整指南注入到本会话的 system prompt（一次任务最多加载几次，幂等）。不匹配就忽略本节继续用原子工具。',
+      '',
+      ...lines,
+    ].join('\n');
   }
 
   /** Backward-compatible legacy entrypoint (M3.5 callers). */

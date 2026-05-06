@@ -54,6 +54,18 @@ export interface HarnessConfig {
   toolDefaultTimeoutMs?: Record<string, number>;
 }
 
+/**
+ * Minimal interface the agent needs to discover and load skill guidance at
+ * runtime. SkillRegistry implements this; kept as a structural type to avoid
+ * a hard import dependency from tools → skill module.
+ */
+export interface SkillCatalog {
+  /** All registered skills, used to populate the "## 可用技能" prompt section. */
+  list(): Array<{ name: string; description: string }>;
+  /** Body of a skill's SKILL.md (the content used as system prompt context). */
+  getBody(name: string): string | undefined;
+}
+
 export interface HarnessContext {
   operator: LarkOperator;
   model: ModelClient;
@@ -70,4 +82,10 @@ export interface HarnessContext {
     warn: (...a: unknown[]) => void;
     error: (...a: unknown[]) => void;
   };
+  /** Catalog of skills the agent can introspect/load via load_skill. */
+  skillCatalog?: SkillCatalog;
+  /** Bodies the agent has loaded so far this run. Mutated by load_skill;
+   *  HarnessLoop diffs this each iteration and appends new entries to the
+   *  system prompt. Keyed by skill name. */
+  loadedSkillBodies?: Map<string, string>;
 }

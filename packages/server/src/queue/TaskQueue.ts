@@ -339,19 +339,17 @@ export class TaskQueueImpl implements TaskQueue {
       );
     }
 
-    const { harnessLoop, operator, modelClient } = this.deps;
+    const { harnessLoop, operator, modelClient, skillRegistry } = this.deps;
 
-    // Free-exploration mode: skill router is bypassed. Detailed per-task skills
-    // (lark_im.send_message, lark_calendar.create_event, ...) made the agent
-    // brittle — SKILL.md hard-coded scope-exits like "目标聊天未打开 → finished(false)"
-    // turned semantic mismatches into task failures instead of letting the agent
-    // re-plan. The agent now receives only the raw instruction + 25 tools and
-    // decides the entire flow itself. _common skills stay in the registry as
-    // dormant utilities and are still exposed via the /skills HTTP route.
+    // Free-exploration mode: skill router is bypassed. The agent receives the
+    // raw instruction + atomic tools + a "可用技能" catalog of registered
+    // SKILL.md macros. It decides via load_skill whether/which to pull in.
+    // The task's user instruction is plumbed into template.description so it
+    // surfaces as the "## 任务说明" section in the system prompt.
     const routed = {
       template: {
         name: 'free_explore',
-        description: '自由探索：不预设 skill 流程，agent 用原子工具自行决策',
+        description: task.instruction,
         systemPrompt: '',
         finishCriteria: '',
         maxLoopIterations: 30,
@@ -363,6 +361,24 @@ export class TaskQueueImpl implements TaskQueue {
       params: task.params || {},
       confidence: 1.0,
     };
+
+    // Adapter: SkillRegistry → SkillCatalog interface. The agent uses
+    // catalog.list() (rendered into the "## 可用技能" prompt section) to see
+    // what's loadable, and load_skill calls catalog.getBody(name) to pull in
+    // the SKILL.md body for the rest of the run.
+    const skillCatalog = skillRegistry
+      ? {
+          list: () =>
+            skillRegistry.list().map((s: any) => ({
+              name: s.name,
+              description: s.description ?? '',
+            })),
+          getBody: (name: string) => {
+            const s = skillRegistry.get(name) as any;
+            return (s && s.systemPrompt) || undefined;
+          },
+        }
+      : undefined;
 
     if (signal.aborted) {
       return { success: false, reason: 'cancelled', totalTokens: 0, routedSkill: routed.template?.name ?? '' };
@@ -398,6 +414,8 @@ export class TaskQueueImpl implements TaskQueue {
       iteration: 0,
       params: { ...(task.params || {}), ...(routed.params || {}) },
       taskId: task.taskId,
+      skillCatalog,
+      loadedSkillBodies: new Map<string, string>(),
       config: {
         maxLoopIterations: routed.template.maxLoopIterations ?? 30,
         maxTokensPerSkill: 120000,

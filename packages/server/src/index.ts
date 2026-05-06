@@ -26,7 +26,7 @@ import {
   scrollTool, dragTool, waitTool, waitUntilTool, activateLarkTool,
   verifyVlmTool, verifyOcrTool, verifyPixelTool, verifyA11yTool,
   riskClassifierTool, failureAnalystTool,
-  finishedTool, callUserTool, recordEvidenceTool, askUserTool,
+  finishedTool, callUserTool, recordEvidenceTool, askUserTool, loadSkillTool,
 } from '@cua-lark/core';
 import path from 'path';
 
@@ -91,7 +91,7 @@ async function main() {
     scrollTool, dragTool, waitTool, waitUntilTool, activateLarkTool,
     verifyVlmTool, verifyOcrTool, verifyPixelTool, verifyA11yTool,
     riskClassifierTool, failureAnalystTool,
-    finishedTool, callUserTool, recordEvidenceTool, askUserTool,
+    finishedTool, callUserTool, recordEvidenceTool, askUserTool, loadSkillTool,
   ];
   for (const tool of allTools) {
     if (tool) toolRegistry.register(tool as any);

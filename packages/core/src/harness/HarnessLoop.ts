@@ -137,6 +137,14 @@ export class HarnessLoop {
     let totalTokens = 0;
     let consecutiveUnknownTool = 0;
     const HALLUCINATED_TOOL_LIMIT = 2;
+    // Per-task scratchpad for skills the agent has pulled in via load_skill.
+    // The tool mutates this Map; HarnessLoop diffs it after each iteration
+    // and appends new bodies to messages[0].content for subsequent turns.
+    if (!ctx.loadedSkillBodies) {
+      ctx.loadedSkillBodies = new Map<string, string>();
+    }
+    const appendedSkills = new Set<string>();
+
     // SkillContext drives PromptBuilder's snippet selection + fewshot loading.
     // hasAnchors is computed by parsing the SKILL.md body once; skillDir is
     // expected to be threaded onto the template by SkillRegistry/TaskQueue.
@@ -147,6 +155,7 @@ export class HarnessLoop {
       hasAnchors: !!parseSkillBody(skillBody).anchors,
       skillDir: (template as { skillDir?: string }).skillDir,
       params: ctx.params,
+      availableSkills: ctx.skillCatalog?.list() ?? [],
     };
     const systemPrompt = new PromptBuilder(this.toolRegistry).build(template, skillContext);
     const messages: any[] = [{ role: 'system', content: systemPrompt }];
@@ -798,6 +807,19 @@ export class HarnessLoop {
 
       messages.push({ role: 'assistant', content: JSON.stringify({ thought, toolCall }) });
       messages.push({ role: 'user', content: observation });
+
+      // If load_skill (or any tool) added entries to ctx.loadedSkillBodies,
+      // append those bodies to the system prompt so subsequent iterations
+      // pick them up. Per-skill append is one-shot (tracked via appendedSkills)
+      // so the system prompt only grows.
+      if (ctx.loadedSkillBodies && ctx.loadedSkillBodies.size > appendedSkills.size) {
+        for (const [name, body] of ctx.loadedSkillBodies) {
+          if (appendedSkills.has(name)) continue;
+          appendedSkills.add(name);
+          messages[0].content = messages[0].content +
+            `\n\n---\n\n## 已加载技能：${name}\n\n${body}`;
+        }
+      }
     }
 
     await this.writeTrace(ctx, 'max_iterations_reached', { maxIterations });

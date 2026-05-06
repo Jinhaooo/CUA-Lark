@@ -59,8 +59,8 @@ export function assertBudget(name: string, text: string, max: number): void {
  */
 export const PROMPT_BUDGETS = {
   base: 1000,           // was 800 — base is mostly Chinese
-  snippet: 320,         // was 150 — single snippet incl. 1 example
-  snippetsTotal: 1800,  // was 800 — 4 required + 2 conditional
+  snippet: 360,         // was 150 → 320 → 360 (added type/hotkey line to tool-selection)
+  snippetsTotal: 2200,  // was 800 → 1800 → 2200 — 4 required + 2 conditional
   skillInstance: 800,   // was 400 — Chinese SKILL.md body is ~2x
   fewshots: 3500,       // was 1500 — Chinese fewshots heavy on tiktoken
   total: 7000,          // was 3000 — sum + headroom

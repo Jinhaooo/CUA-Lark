@@ -113,6 +113,40 @@ describe('PromptBuilder', () => {
     expect(prompt).not.toMatch(/\{\{[^}]+\}\}/);
   });
 
+  it('renders ## 任务参数 when ctx.params is non-empty', () => {
+    const prompt = builder.build(
+      { name: 'lark_im.send_message', description: 'send', systemPrompt: '', finishCriteria: '', toolWhitelist: ['finished'], maxLoopIterations: 30 } as any,
+      { skillName: 'lark_im.send_message', markdownBody: '', hasAnchors: false, params: { text: 'Hello', groupName: 'CUA-Lark-Test' } },
+    );
+    expect(prompt).toContain('## 任务参数');
+    expect(prompt).toContain('"Hello"');
+    expect(prompt).toContain('"CUA-Lark-Test"');
+  });
+
+  it('omits ## 任务参数 when params is empty or undefined', () => {
+    const promptUndef = builder.build(
+      { name: 'lark_im.send_message', description: 'send', systemPrompt: '', finishCriteria: '', toolWhitelist: ['finished'], maxLoopIterations: 30 } as any,
+      { skillName: 'lark_im.send_message', markdownBody: '', hasAnchors: false },
+    );
+    const promptEmpty = builder.build(
+      { name: 'lark_im.send_message', description: 'send', systemPrompt: '', finishCriteria: '', toolWhitelist: ['finished'], maxLoopIterations: 30 } as any,
+      { skillName: 'lark_im.send_message', markdownBody: '', hasAnchors: false, params: {} },
+    );
+    expect(promptUndef).not.toContain('## 任务参数');
+    expect(promptEmpty).not.toContain('## 任务参数');
+  });
+
+  it('tool-selection-heuristics teaches type vs hotkey discipline', () => {
+    const prompt = builder.build(
+      { name: 'lark_im.send_message', description: 'X', systemPrompt: '', finishCriteria: '', toolWhitelist: ['finished'], maxLoopIterations: 30 } as any,
+      { skillName: 'lark_im.send_message', markdownBody: '', hasAnchors: false },
+    );
+    expect(prompt).toContain('type');
+    expect(prompt).toContain('hotkey');
+    // The line distinguishes the two: type for literal text, hotkey for keys.
+    expect(prompt).toMatch(/字面文本|按键|按 Enter/);
+  });
+
   it('buildFromMarkdown stays backward-compatible (legacy callers)', () => {
     const legacy = builder.buildFromMarkdown('# Skill\nSome content with {{TOOLS}}', ['finished']);
     expect(legacy).toContain('finished');

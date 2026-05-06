@@ -13,3 +13,5 @@
 3. `verify_vlm(prompt)` — 重型，复杂语义判断
 
 **禁止**不定位直接 `click(x, y)` 猜坐标——这是已知失败模式。每次先用最便宜的工具，失败再升级到更重的。
+
+**type 仅输入字面文本**：`type({text:"enter"})` 会逐字母打 e/n/t/e/r，**不**等于按回车。按键（Enter/Tab/Esc/Ctrl+C）一律用 `hotkey({key:"enter"})`。

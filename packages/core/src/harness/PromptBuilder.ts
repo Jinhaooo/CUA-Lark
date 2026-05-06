@@ -12,6 +12,10 @@ export interface SkillContext {
   hasAnchors: boolean;
   /** Optional absolute path to the skill directory; used to load few-shots. */
   skillDir?: string;
+  /** Runtime params extracted by SkillRouter (e.g. {text:"Hello"}). When non-empty,
+   *  rendered as a "## 任务参数" section so the agent doesn't treat literal
+   *  parameter names like `text` as the value to type. */
+  params?: Record<string, unknown>;
 }
 
 const REQUIRED_SNIPPETS = [
@@ -116,6 +120,14 @@ export class PromptBuilder {
     // 1. 任务说明
     const taskBlock = [template.description, parsed.taskDetails].filter(Boolean).join('\n\n');
     parts.push(`## 任务说明\n\n${taskBlock || template.description || ''}`);
+
+    // 1b. 任务参数 (only when SkillRouter extracted non-empty params).
+    // This section is what tells the agent that literal `text` in the SKILL
+    // body is a parameter name, not the value to type.
+    if (ctx?.params && Object.keys(ctx.params).length > 0) {
+      const json = JSON.stringify(ctx.params, null, 2);
+      parts.push(`## 任务参数\n\n执行时按下列键值替换 SKILL 描述中的同名占位符（如 \`text\` / \`groupName\` / \`recipient\`）：\n\n\`\`\`json\n${json}\n\`\`\``);
+    }
 
     // 2. 完成判据
     const finishCriteria = parsed.finishCriteria ?? (template as { finishCriteria?: string }).finishCriteria;

@@ -82,6 +82,7 @@ export class HarnessLoop {
       markdownBody: skillBody,
       hasAnchors: !!parseSkillBody(skillBody).anchors,
       skillDir: (template as { skillDir?: string }).skillDir,
+      params: ctx.params,
     };
     const systemPrompt = new PromptBuilder(this.toolRegistry).build(template, skillContext);
     const messages: any[] = [{ role: 'system', content: systemPrompt }];

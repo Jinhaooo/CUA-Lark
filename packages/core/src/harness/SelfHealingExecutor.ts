@@ -16,6 +16,15 @@ const DEFAULT_CONFIG: SelfHealingConfig = {
     'max_iterations_reached',
     'budget_exceeded',
     'tool_call_parse_failed',
+    // Agent-declared scope exits. When send_message's pre-check finds the
+    // target chat isn't open, it calls finished(false, "目标聊天 [X] 未打开
+    // ...需要先 search_contact"). Retrying the same skill won't fix that —
+    // the operator (or a higher-level planner) needs to dispatch a different
+    // skill. Same idea for any future "out of scope" exits.
+    '需要先',
+    '需要 search',
+    '目标聊天',
+    'out of scope',
   ],
 };
 

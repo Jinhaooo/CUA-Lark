@@ -58,10 +58,10 @@ export function assertBudget(name: string, text: string, max: number): void {
  * Spec deviation logged in plans/Prompt-Engineering-Tasks.md (Phase 2 first run).
  */
 export const PROMPT_BUDGETS = {
-  base: 1000,           // was 800 — base is mostly Chinese
+  base: 1500,           // was 800 → 1000 → 1500 (added 启动序列 + 平台限制 sections)
   snippet: 420,         // was 150 → 320 → 360 → 420 (added uia/ocr no-match escalation rule)
   snippetsTotal: 2400,  // was 800 → 1800 → 2200 → 2400 — 4 required + 2 conditional
   skillInstance: 800,   // was 400 — Chinese SKILL.md body is ~2x
   fewshots: 3500,       // was 1500 — Chinese fewshots heavy on tiktoken
-  total: 7000,          // was 3000 — sum + headroom
+  total: 7500,          // was 3000 → 7000 → 7500 (sum + headroom for loaded skill bodies)
 } as const;

@@ -37,9 +37,31 @@
 - **感知**：`screenshot` / `uia_find` / `ocr_locate` / `read_state` / `wait_for_loading` / `vlm_locate`
 - **执行**：`click` / `type` / `hotkey` / `scroll` / `drag` / `wait` / `activate_lark`
 - **验证**：`verify_a11y` / `verify_ocr` / `verify_pixel` / `verify_vlm`
-- **元**：`finished` / `call_user` / `ASK_USER` / `record_evidence`
+- **元**：`finished` / `call_user` / `ASK_USER` / `record_evidence` / `load_skill`
 
-工具名是**封闭白名单**——下文 "## 可用工具" 段会列出本任务允许的子集。**严禁自创**工具名（`noop` / `wait_until_done` / `do_nothing` 都不存在，调用立刻报错）。
+工具名是**封闭白名单**——下文 "## 可用工具" 段会列出本任务允许的子集。**严禁自创**工具名（`noop` / `wait_until_done` / `do_nothing` / `tap` / `mouse_click` 都不存在，调用立刻报错）。
+
+---
+
+## 启动序列（强约束）
+
+每个任务**必须**按下面顺序启动，不得乱序、不得跳步：
+
+1. **第一动作**：`activate_lark` —— 把飞书窗口拉到前台。无任何例外。
+2. **第二动作**：审视下文 "## 可用技能" 段。判断本次任务是否落在某个技能的描述范围内：
+   - **匹配**（如"发消息 / 撤回 / 搜历史"匹配 `lark_im`）→ 立刻 `load_skill({"name":"<技能名>"})` 把它的完整指南拉进当前 system prompt
+   - **不匹配** → 在 thought 里明确说"已审视技能目录，无匹配，按原子工具自行决策"，再继续
+3. **第三动作起**：先 `screenshot` 获取真实状态，再按已加载的技能指南 / 原子工具推进
+
+`load_skill` 是幂等的，重复调用不会出错；漏调一次"匹配但没加载"会让 agent 错过域知识，是常见错误。
+
+---
+
+## 平台限制（Lark 桌面端）
+
+飞书桌面端是 Electron/Chromium 应用，**完全不向 Windows UIA 暴露内部控件树**——`uia_find` / `uia_find_all` 在飞书窗口内**永远返回 No matching element**。这不是参数错、不是控件名拼错、不是要换 role，是 Electron 本身没接 a11y。
+
+**结论**：在飞书界面定位元素时，**直接用 `ocr_locate` / `vlm_locate` / 截图肉眼判断**，不要先尝试 UIA。试 UIA 是确定性浪费一轮。仅当截图里能确认目标是非飞书的系统级 UI（资源管理器、原生对话框）才考虑 UIA。
 
 ---
 

@@ -339,36 +339,30 @@ export class TaskQueueImpl implements TaskQueue {
       );
     }
 
-    const { skillRouter, skillRegistry, harnessLoop, operator, modelClient } = this.deps;
+    const { harnessLoop, operator, modelClient } = this.deps;
 
-    // 1. 路由：选 skill template
-    const templates = skillRegistry.list().map((s: any) => ({
-      name: s.name,
-      description: s.description ?? '',
-      systemPrompt: s.systemPrompt ?? '',
-      finishCriteria: s.finishCriteria ?? '',
-      maxLoopIterations: s.maxLoopIterations ?? 30,
-      toolWhitelist: s.toolWhitelist,
-      sideEffects: s.sideEffects,
-      fewShots: s.fewShots,
-      // Thread skillDir from SkillRegistry so PromptBuilder.renderFewshots()
-      // can locate <skillDir>/few-shots/*.md per task.
-      skillDir: s.skillDir,
-    }));
-
-    if (templates.length === 0) {
-      throw new Error('No skill templates registered');
-    }
-
-    let routed: { template: any; params: Record<string, unknown>; confidence: number };
-    try {
-      routed = await skillRouter.route(task.instruction, {
-        model: modelClient,
-        templates,
-      });
-    } catch (err) {
-      throw new Error(`SkillRouter failed: ${err instanceof Error ? err.message : err}`);
-    }
+    // Free-exploration mode: skill router is bypassed. Detailed per-task skills
+    // (lark_im.send_message, lark_calendar.create_event, ...) made the agent
+    // brittle — SKILL.md hard-coded scope-exits like "目标聊天未打开 → finished(false)"
+    // turned semantic mismatches into task failures instead of letting the agent
+    // re-plan. The agent now receives only the raw instruction + 25 tools and
+    // decides the entire flow itself. _common skills stay in the registry as
+    // dormant utilities and are still exposed via the /skills HTTP route.
+    const routed = {
+      template: {
+        name: 'free_explore',
+        description: '自由探索：不预设 skill 流程，agent 用原子工具自行决策',
+        systemPrompt: '',
+        finishCriteria: '',
+        maxLoopIterations: 30,
+        toolWhitelist: undefined,
+        sideEffects: undefined,
+        fewShots: undefined,
+        skillDir: undefined,
+      },
+      params: task.params || {},
+      confidence: 1.0,
+    };
 
     if (signal.aborted) {
       return { success: false, reason: 'cancelled', totalTokens: 0, routedSkill: routed.template?.name ?? '' };

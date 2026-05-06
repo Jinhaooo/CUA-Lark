@@ -66,6 +66,16 @@ export interface HarnessContext {
     error: (...a: unknown[]) => void;
   };
   pauseController?: PauseController;
+  /** Catalog of skills the agent can introspect/load via load_skill.
+   *  Mirrors tools/types.ts SkillCatalog interface. */
+  skillCatalog?: {
+    list(): Array<{ name: string; description: string }>;
+    getBody(name: string): string | undefined;
+  };
+  /** Bodies the agent has loaded so far this run. Mutated by load_skill;
+   *  HarnessLoop diffs this each iteration and appends new entries to the
+   *  system prompt. Keyed by skill name. */
+  loadedSkillBodies?: Map<string, string>;
 }
 
 export type PauseReason = 'user_hotkey' | 'user_button' | 'user_dashboard';

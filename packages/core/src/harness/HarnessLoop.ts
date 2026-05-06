@@ -211,11 +211,20 @@ export class HarnessLoop {
         screenshotPath,
       });
 
+      // Echo the task instruction in every user turn so it stays in the
+      // recency window. Without this, after ~6 turns the original instruction
+      // (only stated once in system prompt) drifts out of the model's
+      // attention and titles/names get hallucinated. See trace
+      // 01KQYCR8BYJVDE5YTKE2JFQBAV (2026-05-06): "标题为 CUA-Lark" → "1-大模型基础课".
+      const taskEcho = (template.description || '').trim();
+      const turnText = taskEcho
+        ? `当前任务：${taskEcho}\n\n请观察当前截图，决定下一步操作。严格按 JSON 输出 thought（中文）和 tool_call。`
+        : '请观察当前截图，决定下一步操作。严格按 JSON 输出 thought（中文）和 tool_call。';
       const userMessage = {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshot.base64}` } },
-          { type: 'text', text: '请观察当前截图，决定下一步操作。严格按 JSON 输出 thought（中文）和 tool_call。' },
+          { type: 'text', text: turnText },
         ],
       };
 
@@ -756,6 +765,14 @@ export class HarnessLoop {
             : await this.riskGate.executeWithRiskGate(tool, { ...ctx, pauseSignal } as any, args, this.eventBus);
           observation = result.observation;
           success = result.success;
+          // UI settle delay after successful act-category tools. Lark's chat
+          // switching can take 300-1000ms to repaint (network round-trip for
+          // messages + avatars). Without this pause, the next iteration's
+          // screenshot fires ~700ms after the click, often catching the OLD
+          // chat — agent reads it as "click didn't work" and retries forever.
+          if (success && tool.category === 'act') {
+            await new Promise((r) => setTimeout(r, 600));
+          }
         }
       } catch (error) {
         if (error instanceof CallUserRequired) {

@@ -385,6 +385,10 @@ export class TaskQueueImpl implements TaskQueue {
     // catalog.list() (rendered into the "## 可用技能" prompt section) to see
     // what's loadable, and load_skill calls catalog.getBody(name) to pull in
     // the SKILL.md body for the rest of the run.
+    //
+    // getBody re-reads SKILL.md from disk on every call (hot-reload). Without
+    // this, edits to a SKILL.md would only take effect after a full server
+    // restart — too slow for prompt-tuning iteration during demos.
     const skillCatalog = skillRegistry
       ? {
           list: () =>
@@ -394,6 +398,22 @@ export class TaskQueueImpl implements TaskQueue {
             })),
           getBody: (name: string) => {
             const s = skillRegistry.get(name) as any;
+            const skillDir = s && s.skillDir;
+            if (skillDir) {
+              try {
+                // Re-read SKILL.md body fresh; matter() strips the frontmatter
+                // so we get just the markdown body the prompt cares about.
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const fs = require('fs');
+                const path = require('path');
+                const matter = require('gray-matter');
+                const md = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+                const { content } = matter(md);
+                if (content && content.trim()) return content.trim();
+              } catch {
+                // fall through to cached body
+              }
+            }
             return (s && s.systemPrompt) || undefined;
           },
         }

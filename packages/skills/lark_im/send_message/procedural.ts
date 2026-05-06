@@ -7,7 +7,6 @@ export default defineSkill({
   kind: 'procedural',
   description: 'Send a text message in the current chat.',
   manual: 'Click the message input, type text, then press Enter.',
-  fallback: 'lark_im.send_message_agent_driven',
   params: z.object({ text: z.string() }),
   verifyActions: false,
   sideEffects: {

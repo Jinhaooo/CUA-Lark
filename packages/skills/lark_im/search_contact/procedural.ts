@@ -13,7 +13,6 @@ export default defineSkill({
   kind: 'procedural',
   description: 'Search a contact or group and open the chat.',
   manual: 'Click global search, type the keyword, then click the matching chat result.',
-  fallback: 'lark_im.search_contact_agent_driven',
   params: z.object({ name_pattern: z.string() }),
   verifyActions: false,
   sideEffects: undefined,

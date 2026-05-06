@@ -7,7 +7,6 @@ export default defineSkill({
   kind: 'procedural',
   description: 'Verify that a message was sent successfully.',
   manual: 'Check the latest message in the current chat.',
-  fallback: 'lark_im.verify_message_sent_agent_driven',
   params: z.object({ text: z.string() }),
   verifyActions: false,
   sideEffects: undefined,

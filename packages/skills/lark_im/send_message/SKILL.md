@@ -25,7 +25,12 @@ verifyStrategy:
 
 # Send Message
 
-Type `text` into the currently open Lark chat input and press Enter. Do not click the send button after typing; Enter submits the message.
+Type `text` into the **target** Lark chat input and press Enter. Do not click the send button after typing; Enter submits the message.
+
+**前置校验（必做）**：
+- 任务里如果指定了群名 / 联系人（如"在 X 群中发"、"给 Y 发"），先看截图顶部聊天标题是否就是该目标。
+- 标题不匹配 → **不要直接打字**。当前 skill 不负责切换会话；调 `finished(false, "目标聊天 [X] 未打开，当前打开的是 [Y]，需要先 search_contact")` 让上层处理。
+- 标题匹配 → 继续 A1 → A2 → A3 流程。
 
 When processing an existing message, you can right-click the target message first, then inspect the context menu to decide the next operation.
 

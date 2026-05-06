@@ -149,8 +149,14 @@ async def recognize(image: UploadFile = File(...)):
         elif current_engine == "rapidocr_fallback" and rapid_ocr:
             result, _ = rapid_ocr(image_data)
             tokens = []
+            if not result:
+                return tokens
+            # RapidOCR returns items in shape (box, text, confidence) where
+            # box is a 4-point polygon [[x,y],[x,y],[x,y],[x,y]]. The original
+            # code unpacked as (text, box, confidence) — reversed — which made
+            # int(box[0][0]) try to coerce the first character of the text.
             for item in result:
-                text, box, confidence = item
+                box, text, confidence = item
                 tokens.append({
                     "text": text,
                     "box": [int(box[0][0]), int(box[0][1]), int(box[2][0]), int(box[2][1])],

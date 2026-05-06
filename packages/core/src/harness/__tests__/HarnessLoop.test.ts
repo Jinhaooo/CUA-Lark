@@ -75,6 +75,30 @@ describe('HarnessLoop', () => {
     expect(result.trace[0]?.observation).toBe('saw real-context and payload');
   });
 
+  it('parses ```json-fenced model responses (GLM-5V tolerance)', async () => {
+    const registry = new ToolRegistry();
+    const loop = new HarnessLoop(registry);
+    const ctx = createContext([
+      '```json\n' + JSON.stringify({ thought: 'fenced', tool_call: { name: 'finished', args: { success: true, reason: 'fenced ok' } } }) + '\n```',
+    ]);
+
+    const result = await loop.run(createTemplate({ toolWhitelist: ['finished'] }), ctx);
+    expect(result.success).toBe(true);
+    expect(result.finishedReason).toBe('fenced ok');
+  });
+
+  it('parses model responses with leading prose (extract first/last brace)', async () => {
+    const registry = new ToolRegistry();
+    const loop = new HarnessLoop(registry);
+    const ctx = createContext([
+      'Here is my response:\n' + JSON.stringify({ thought: 'prose', tool_call: { name: 'finished', args: { success: true, reason: 'prose ok' } } }) + '\nHope this helps.',
+    ]);
+
+    const result = await loop.run(createTemplate({ toolWhitelist: ['finished'] }), ctx);
+    expect(result.success).toBe(true);
+    expect(result.finishedReason).toBe('prose ok');
+  });
+
   it('fails unavailable tools without executing them', async () => {
     const registry = new ToolRegistry();
     const execute = vi.fn();

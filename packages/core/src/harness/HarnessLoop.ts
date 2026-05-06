@@ -12,6 +12,31 @@ import { RiskGate, type RiskGateConfig } from '../tools/RiskGate.js';
 import { loadRiskGateConfigFromYaml, toRiskGateConfig } from '../tools/RiskGateConfigLoader.js';
 import { PromptBuilder } from './PromptBuilder.js';
 
+/**
+ * Tolerant JSON object extraction. Some VLM endpoints (GLM-5V, certain
+ * Qwen versions in non-strict mode) wrap the JSON in ```json fences or
+ * prefix it with prose like "Here is the response:". JSON.parse rejects
+ * those; this helper peels them off before retrying.
+ */
+function extractJsonObject(text: string): unknown {
+  try { return JSON.parse(text); } catch {}
+
+  const trimmed = text.trim();
+
+  const fence = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fence && fence[1]) {
+    try { return JSON.parse(fence[1].trim()); } catch {}
+  }
+
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(trimmed.slice(first, last + 1)); } catch {}
+  }
+
+  throw new SyntaxError('Could not extract JSON object from model response');
+}
+
 async function checkPauseAndWait(ctx: HarnessContext): Promise<'resumed' | 'cancelled'> {
   const pauseController = ctx.pauseController;
   if (!pauseController) {
@@ -242,7 +267,7 @@ export class HarnessLoop {
           }
 
           try {
-            parsedResponse = JSON.parse(thought);
+            parsedResponse = extractJsonObject(thought);
             this.emit({
               kind: 'model_request_finished',
               taskId: ctx.testRunId,
@@ -254,6 +279,9 @@ export class HarnessLoop {
             streamError = null;
             break;
           } catch {
+            // Capture raw response for debugging — parse failures are otherwise
+            // invisible (thought_complete is emitted only on the success path).
+            const sample = thought.length > 600 ? thought.slice(0, 600) + '…' : thought;
             this.emit({
               kind: 'model_request_finished',
               taskId: ctx.testRunId,
@@ -262,7 +290,8 @@ export class HarnessLoop {
               durationMs: Date.now() - modelStartedAt,
               success: false,
               reason: 'invalid_json',
-            });
+              rawSample: sample,
+            } as any);
             if (retry === 1) {
               throw new Error('Invalid JSON response after retry');
             }

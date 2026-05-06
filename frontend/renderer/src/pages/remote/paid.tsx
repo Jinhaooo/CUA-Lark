@@ -151,7 +151,7 @@ const RemoteOperator = () => {
     setTimeout(() => {
       containerRef.current?.scrollIntoView(false);
     }, 100);
-  }, [messages, thinking, errorMsg]);
+  }, [messages.length, thinking, errorMsg]);
 
   const handleSelect = async (suggestion: string) => {
     await api.setInstructions({ instructions: suggestion });

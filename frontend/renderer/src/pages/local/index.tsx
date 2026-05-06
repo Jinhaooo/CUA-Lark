@@ -135,11 +135,17 @@ const LocalOperator = () => {
     messages.length,
   ]);
 
+  // Only auto-scroll when a new message is appended, NOT on every reference
+  // change. With streaming VLMs (e.g. glm-5v-turbo) every thought_chunk SSE
+  // event upserts the current iteration → setState({...state, messages})
+  // produces a fresh array ref, which previously refired this effect 50-100x
+  // per second. The 100ms timers piled up and yanked scrollIntoView while
+  // the last message's text was still growing, jerking the scrollbar.
   useEffect(() => {
     setTimeout(() => {
       containerRef.current?.scrollIntoView(false);
     }, 100);
-  }, [messages, thinking, errorMsg]);
+  }, [messages.length, thinking, errorMsg]);
 
   const handleSelect = async (suggestion: string) => {
     await api.setInstructions({ instructions: suggestion });

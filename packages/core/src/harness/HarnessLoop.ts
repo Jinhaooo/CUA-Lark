@@ -249,6 +249,13 @@ export class HarnessLoop {
             messages: visionMessages,
             modelOverride: ctx.config.vlmModel,
             response_format: { type: 'json_object' },
+            // Reasoning-class VLMs (qwen3.x-plus, GLM-5V, deepseek-r1) split
+            // their output between reasoning_content and content. Without an
+            // explicit cap the API default (often 1500–2000) gets eaten by
+            // CoT, leaving the content stream truncated mid-JSON. 4096 is the
+            // smallest budget that reliably fits 4-section XML thought + JSON
+            // wrapper + headroom for reasoning preamble.
+            max_tokens: ctx.config.maxResponseTokens ?? 4096,
             signal: requestSignal.signal,
           };
 
@@ -257,9 +264,13 @@ export class HarnessLoop {
           // empty. Buffer reasoning separately; if `content` is empty at the end
           // of the stream we fall back to it before parsing.
           let reasoningBuffer = '';
+          let lastFinishReason: string | undefined;
           if (typeof ctx.model.chatVisionStream === 'function') {
             try {
               for await (const chunk of ctx.model.chatVisionStream(visionRequest)) {
+                if ((chunk as { finishReason?: string }).finishReason) {
+                  lastFinishReason = (chunk as { finishReason?: string }).finishReason;
+                }
                 if (requestSignal.signal.aborted) {
                   throw new Error(requestSignal.reason());
                 }
@@ -331,8 +342,10 @@ export class HarnessLoop {
             // invisible (thought_complete is emitted only on the success path).
             // When BOTH content and reasoning are empty, sample stays "" — that
             // is the smoking gun for "VLM returned nothing parseable at all".
+            // finishReason="length" is the smoking gun for "max_tokens cut us off".
             const combined = thought || reasoningBuffer;
             const sample = combined.length > 600 ? combined.slice(0, 600) + '…' : combined;
+            const reasonTag = lastFinishReason ? `invalid_json (finish=${lastFinishReason})` : 'invalid_json';
             this.emit({
               kind: 'model_request_finished',
               taskId: ctx.testRunId,
@@ -340,7 +353,7 @@ export class HarnessLoop {
               attempt: retry + 1,
               durationMs: Date.now() - modelStartedAt,
               success: false,
-              reason: 'invalid_json',
+              reason: reasonTag,
               rawSample: sample,
               contentChars: thought.length,
               reasoningChars: reasoningBuffer.length,

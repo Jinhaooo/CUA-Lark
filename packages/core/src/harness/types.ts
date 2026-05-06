@@ -65,6 +65,21 @@ export interface HarnessContext {
     warn: (...a: unknown[]) => void;
     error: (...a: unknown[]) => void;
   };
+  pauseController?: PauseController;
+}
+
+export type PauseReason = 'user_hotkey' | 'user_button' | 'user_dashboard';
+
+export interface PauseController {
+  readonly state: 'running' | 'paused';
+  readonly pausedAtIteration?: number;
+
+  pause(reason: PauseReason): { paused: boolean; alreadyPaused: boolean; pausedAtIteration: number };
+  resume(): { resumed: boolean; alreadyRunning: boolean; resumedAtIteration: number };
+  skipNextTool(): { skipped: boolean };
+
+  pauseSignal(): AbortSignal;
+  waitForResume(): Promise<void>;
 }
 
 export interface HarnessConfig {
@@ -74,6 +89,9 @@ export interface HarnessConfig {
   messageHistoryLimit: number;
   loopDetectionThreshold: number;
   modelRequestTimeoutMs?: number;
+  /** Per-call cap on VLM output tokens. When unset, defaults to 4096 — enough
+   *  for the 4-section XML thought + JSON wrapper + reasoning preamble. */
+  maxResponseTokens?: number;
 }
 
 export class CallUserRequired extends Error {

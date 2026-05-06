@@ -251,6 +251,12 @@ importers:
       '@cua-lark/core':
         specifier: workspace:*
         version: link:../core
+      '@cua-lark/ocr-bridge':
+        specifier: workspace:*
+        version: link:../ocr-bridge
+      '@cua-lark/uia-bridge':
+        specifier: workspace:*
+        version: link:../uia-bridge
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0

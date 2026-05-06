@@ -9,6 +9,8 @@ import { createEventBus } from './sse/SseBroker.js';
 import { SqliteTraceStore } from '@cua-lark/core/src/trace/SqliteTraceStore.js';
 import { TracePersister } from '@cua-lark/core/src/trace/TracePersister.js';
 import { SkillRegistry } from '@cua-lark/core/src/skill/SkillRegistry.js';
+import { UiaClient } from '@cua-lark/uia-bridge';
+import { OcrClient } from '@cua-lark/ocr-bridge';
 
 // 内核接线（从 @cua-lark/core 主入口）
 import {
@@ -21,7 +23,7 @@ import {
   screenshotTool, uiaFindTool, uiaFindAllTool, ocrLocateTool, ocrReadTool,
   vlmLocateTool, readStateTool, waitForLoadingTool,
   clickTool, doubleClickTool, rightClickTool, typeTool, hotkeyTool,
-  scrollTool, dragTool, waitTool, waitUntilTool,
+  scrollTool, dragTool, waitTool, waitUntilTool, activateLarkTool,
   verifyVlmTool, verifyOcrTool, verifyPixelTool, verifyA11yTool,
   riskClassifierTool, failureAnalystTool,
   finishedTool, callUserTool, recordEvidenceTool, askUserTool,
@@ -49,6 +51,36 @@ async function main() {
     console.warn('[server] runAgent calls will fail until CUA_VLM_BASE_URL/CUA_VLM_API_KEY/CUA_VLM_MODEL is set in .env');
   }
 
+  /* ===== UIA / OCR clients ===== */
+  // UIA: spawns a PowerShell server on Windows (no-op on other platforms).
+  // The constructor never throws — its methods return null when the bridge
+  // process fails to start. We probe `isA11yEnabled` to log status.
+  const uiaClient = new UiaClient();
+  try {
+    const health = await uiaClient.isA11yEnabled();
+    console.log(`[server] UiaClient initialized: enabled=${health.enabled} nodeCount=${health.nodeCount}`);
+  } catch (err) {
+    console.warn('[server] UiaClient health probe failed:', err instanceof Error ? err.message : err);
+  }
+
+  // OCR: opt-in. The Python OCR bridge ships at packages/ocr-bridge/server.py
+  // but isn't auto-spawned because PaddleOCR's first run downloads weights and
+  // can stall startup. Set CUA_OCR_BASE_URL=http://127.0.0.1:7010 in .env once
+  // you've started the bridge yourself (`pnpm --filter @cua-lark/ocr-bridge dev`).
+  let ocrClient: OcrClient | undefined;
+  const ocrBaseUrl = process.env.CUA_OCR_BASE_URL;
+  if (ocrBaseUrl) {
+    ocrClient = new OcrClient(ocrBaseUrl);
+    try {
+      const ping = await fetch(`${ocrBaseUrl}/health`).then((r) => r.ok).catch(() => false);
+      console.log(`[server] OcrClient initialized: ${ocrBaseUrl} healthy=${ping}`);
+    } catch {
+      console.warn(`[server] OcrClient probe failed for ${ocrBaseUrl}`);
+    }
+  } else {
+    console.log('[server] OCR not enabled (set CUA_OCR_BASE_URL to enable)');
+  }
+
   /* ===== LarkOperator + ToolRegistry ===== */
   const operator = new LarkOperator();
   const toolRegistry = new ToolRegistryImpl();
@@ -56,7 +88,7 @@ async function main() {
     screenshotTool, uiaFindTool, uiaFindAllTool, ocrLocateTool, ocrReadTool,
     vlmLocateTool, readStateTool, waitForLoadingTool,
     clickTool, doubleClickTool, rightClickTool, typeTool, hotkeyTool,
-    scrollTool, dragTool, waitTool, waitUntilTool,
+    scrollTool, dragTool, waitTool, waitUntilTool, activateLarkTool,
     verifyVlmTool, verifyOcrTool, verifyPixelTool, verifyA11yTool,
     riskClassifierTool, failureAnalystTool,
     finishedTool, callUserTool, recordEvidenceTool, askUserTool,
@@ -87,9 +119,19 @@ async function main() {
     harnessLoop,
     operator,
     modelClient,
+    uia: uiaClient,
+    ocr: ocrClient,
   });
 
-  await registerRoutes(server, { config, eventBus, taskQueue, traceStore });
+  await registerRoutes(server, {
+    config,
+    eventBus,
+    taskQueue,
+    traceStore,
+    uia: uiaClient,
+    ocr: ocrClient,
+    modelClient,
+  });
 
   try {
     await server.listen({ host: config.host, port: config.port });

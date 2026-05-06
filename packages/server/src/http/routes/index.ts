@@ -12,6 +12,10 @@ export interface RouteContext {
   eventBus: EventBus;
   taskQueue: TaskQueue;
   traceStore: SqliteTraceStore;
+  /** Optional handles surfaced through /health for live status probing. */
+  uia?: { isA11yEnabled(): Promise<{ enabled: boolean; nodeCount: number }> };
+  ocr?: unknown;
+  modelClient?: unknown;
   embeddingClient?: EmbeddingClient;
   fewShotMiner?: FewShotMiner;
   failureClusterer?: FailureClusterer;
@@ -28,6 +32,7 @@ export async function registerRoutes(server: FastifyInstance, ctx: RouteContext)
     await import('./tool-stats.js').then((m) => m.registerToolStatsRoutes(server, ctx));
     await import('./screenshots.js').then((m) => m.registerScreenshotRoutes(server, ctx));
     await import('./confirm.js').then((m) => m.registerConfirmRoutes(server, ctx));
+    await import('./pause.js').then((m) => m.registerPauseRoutes(server, ctx));
     const { embeddingClient, fewShotMiner, failureClusterer } = ctx;
     if (embeddingClient && fewShotMiner && failureClusterer) {
       await import('./curation.js').then((m) =>

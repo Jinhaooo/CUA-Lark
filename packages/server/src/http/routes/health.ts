@@ -15,11 +15,18 @@ export async function registerHealthRoutes(server: FastifyInstance, ctx: RouteCo
       },
     },
   }, async () => {
-    return {
-      status: 'ok' as const,
-      a11y: 'enabled' as const,
-      ocr: 'available' as const,
-      vlm: 'available' as const,
-    };
+    let a11y: 'enabled' | 'disabled' = 'disabled';
+    try {
+      if (ctx.uia) {
+        const probe = await ctx.uia.isA11yEnabled();
+        a11y = probe.enabled ? 'enabled' : 'disabled';
+      }
+    } catch {
+      a11y = 'disabled';
+    }
+    const ocr = ctx.ocr ? 'available' : 'unavailable';
+    const vlm = ctx.modelClient ? 'available' : 'unavailable';
+    const status = (a11y === 'enabled' || ocr === 'available') && vlm === 'available' ? 'ok' : 'degraded';
+    return { status, a11y, ocr, vlm } as const;
   });
 }

@@ -120,6 +120,10 @@ export interface TaskQueueDeps {
   harnessLoop: HarnessLoop;
   operator: LarkOperator;
   modelClient: ModelClient | null;
+  /** Optional accessibility / OCR clients. Tools (uia_find, ocr_locate) check
+   *  ctx.uia / ctx.ocr presence and report "not available" when undefined. */
+  uia?: unknown;
+  ocr?: unknown;
 }
 
 export class TaskQueueImpl implements TaskQueue {
@@ -392,6 +396,8 @@ export class TaskQueueImpl implements TaskQueue {
     const ctx = {
       operator,
       model: modelClient,
+      uia: this.deps.uia,
+      ocr: this.deps.ocr,
       trace: this.traceStore,
       testRunId: task.taskId,
       parentTraceId: task.taskId,

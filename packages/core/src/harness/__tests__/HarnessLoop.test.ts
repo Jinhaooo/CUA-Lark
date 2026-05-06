@@ -75,6 +75,34 @@ describe('HarnessLoop', () => {
     expect(result.trace[0]?.observation).toBe('saw real-context and payload');
   });
 
+  it('falls back to reasoning_content when content is empty (GLM-5V / deepseek-r1)', async () => {
+    const registry = new ToolRegistry();
+    const loop = new HarnessLoop(registry);
+    // Simulate a reasoning-only stream: chatVisionStream yields chunks where
+    // `delta` is empty but `reasoningDelta` carries the entire response.
+    const reasoningPayload = 'I need to finish.\n\n```json\n' +
+      JSON.stringify({ thought: 'reasoning', tool_call: { name: 'finished', args: { success: true, reason: 'reasoning ok' } } }) +
+      '\n```';
+    const chatVisionStream = vi.fn(async function* () {
+      yield { delta: '', reasoningDelta: reasoningPayload, done: false };
+      yield { delta: '', done: true };
+    });
+    const ctx: any = {
+      operator: { screenshot: vi.fn(async () => ({ base64: 'AA==' })) },
+      model: { chatVisionStream, chatVision: vi.fn(async () => ({ content: '', usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 } })) },
+      trace: { write: vi.fn(async () => {}) },
+      testRunId: 'run-r',
+      parentTraceId: 'parent-r',
+      iteration: 0,
+      params: {},
+      config: { maxLoopIterations: 5, maxTokensPerSkill: 1000, messageHistoryLimit: 5, loopDetectionThreshold: 3 },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    };
+    const result = await loop.run(createTemplate({ toolWhitelist: ['finished'] }), ctx);
+    expect(result.success).toBe(true);
+    expect(result.finishedReason).toBe('reasoning ok');
+  });
+
   it('parses ```json-fenced model responses (GLM-5V tolerance)', async () => {
     const registry = new ToolRegistry();
     const loop = new HarnessLoop(registry);

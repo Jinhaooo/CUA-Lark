@@ -214,16 +214,19 @@ export class HarnessLoop {
           };
 
           if (typeof ctx.model.chatVisionStream === 'function') {
+            // Some VLMs (GLM-5V, deepseek-r1) emit the entire response — including
+            // the final JSON answer — inside `reasoning_content`, leaving `content`
+            // empty. Buffer reasoning separately; if `content` is empty at the end
+            // of the stream we fall back to it before parsing.
+            let reasoningBuffer = '';
             try {
               for await (const chunk of ctx.model.chatVisionStream(visionRequest)) {
                 if (requestSignal.signal.aborted) {
                   throw new Error(requestSignal.reason());
                 }
-                // Reasoning models (qwen3.x reasoning / deepseek-r1 等) 把 CoT
-                // 放在 reasoning_content。前端展示需要它，但不能混入 thought
-                // 缓冲（否则后续 JSON 解析失败）。
                 const reasoningDelta = (chunk as { reasoningDelta?: string }).reasoningDelta;
                 if (reasoningDelta) {
+                  reasoningBuffer += reasoningDelta;
                   this.emit({
                     kind: 'thought_chunk',
                     taskId: ctx.testRunId,
@@ -246,6 +249,12 @@ export class HarnessLoop {
                 if (chunk.done) {
                   break;
                 }
+              }
+              // Reasoning-only model: no content delta arrived, but we got CoT
+              // text. Parse from there — extractJsonObject() peels prose around
+              // the JSON object so this works on GLM-5V's "<think>...{...}" stream.
+              if (!thought && reasoningBuffer) {
+                thought = reasoningBuffer;
               }
             } finally {
               requestSignal.cleanup();

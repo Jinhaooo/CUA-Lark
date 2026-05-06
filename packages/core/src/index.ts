@@ -26,12 +26,14 @@ export {
   PromptBuilder,
   ToolCallParser,
   HarnessConfigLoader,
+  PauseControllerImpl,
 } from './harness/index.js';
 export type {
   HarnessLoopInterface,
   SkillTemplate,
   HarnessResult,
   HarnessTrace,
+  PauseController,
 } from './harness/index.js';
 export * from './router/index.js';
 export { SkillPlanner } from './planner/index.js';

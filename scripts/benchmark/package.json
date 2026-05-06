@@ -1,0 +1,20 @@
+{
+  "name": "@cua-lark/benchmark",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "pause-latency": "tsx index.ts pause-latency",
+    "overlay-perf": "tsx index.ts overlay-perf",
+    "state-consistency": "tsx index.ts state-consistency",
+    "run-all": "tsx index.ts pause-latency && tsx index.ts overlay-perf && tsx index.ts state-consistency"
+  },
+  "dependencies": {
+    "@types/node-fetch": "^2.6.13",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.7.0"
+  }
+}

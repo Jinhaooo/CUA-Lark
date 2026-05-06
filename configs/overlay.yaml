@@ -1,0 +1,43 @@
+overlay:
+  # Kill switch: keep `false` until the overlay-renderer is wired up to a
+  # dev server (it's a separate vite workspace). Setting `true` while the chat
+  # vite dev server (:5173) is the only one running causes the overlay window
+  # to load a 404 page from /overlay-renderer/ and, combined with fullscreen +
+  # alwaysOnTop, produces an unclosable opaque cover. Re-enable only after
+  # serving overlay-renderer at a known URL and updating overlayBrowserWindow.
+  enabled: false
+
+  border:
+    color: "#8B5CF6"
+    pausedColor: "#F97316"
+    width: "0.4vh"
+    breathDurationMs: 2000
+
+  highlight:
+    color: "#10B981"
+    radiusPx: 40
+    durationMs: 300
+    fadeOutMs: 200
+
+  thoughtCard:
+    enabled: true
+    durationMs: 3000
+    maxChars: 100
+    position: "top-right"
+    offsetTopPx: 80
+    offsetRightPx: 24
+
+  pauseButton:
+    enabled: true
+    position: "bottom-right"
+    color: "#EF4444"
+    sizePx: 56
+    persistPosition: true
+
+  hotkey:
+    primary: "Escape"
+    fallback: ["F12", "Ctrl+Shift+P"]
+
+  display:
+    coverPrimaryOnly: true
+    fullscreen: true

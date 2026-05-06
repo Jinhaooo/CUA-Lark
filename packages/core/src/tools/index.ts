@@ -21,6 +21,7 @@ export { scrollTool } from './act/scroll.js';
 export { dragTool } from './act/drag.js';
 export { waitTool } from './act/wait.js';
 export { waitUntilTool } from './act/wait_until.js';
+export { activateLarkTool } from './act/activate_lark.js';
 
 export { verifyVlmTool } from './verify/verify_vlm.js';
 export { verifyOcrTool } from './verify/verify_ocr.js';

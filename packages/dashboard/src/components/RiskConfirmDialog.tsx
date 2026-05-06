@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSse } from '@/hooks/useSse';
 import {
   Dialog,
@@ -9,69 +9,56 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { apiClient } from '@/api/client';
 
 interface RiskConfirmationData {
   taskId: string;
-    action: {
-      name: string;
-      args?: unknown;
-    };
+  action: {
+    name: string;
+    args?: unknown;
+  };
   riskLevel: string;
   reason: string;
-  question: string;
+  question?: string;
 }
 
 interface RiskConfirmDialogProps {
   taskId: string | null;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
-export function RiskConfirmDialog({ taskId, onClose }: RiskConfirmDialogProps) {
-  const [pendingConfirmation, setPendingConfirmation] = useState<RiskConfirmationData | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+const RISK_REQUIRED_KIND = 'risk_confirmation_required';
+const RISK_RESOLVED_KINDS = new Set(['risk_confirmed', 'risk_confirmation_received', 'risk_approved']);
 
+export function RiskConfirmDialog({ taskId }: RiskConfirmDialogProps) {
   const { events } = useSse(taskId);
-  const lastEvent = events.at(-1);
+  const [pending, setPending] = useState<RiskConfirmationData | null>(null);
+
+  // Pick the most recent confirmation request that hasn't been resolved by a
+  // newer risk_confirmed / risk_approved / risk_confirmation_received event.
+  // D33: dashboard observes only — confirm action lives in the chat window.
+  const latestRequest = useMemo<RiskConfirmationData | null>(() => {
+    let request: RiskConfirmationData | null = null;
+    for (const evt of events) {
+      const kind = (evt as { kind?: string }).kind;
+      if (kind === RISK_REQUIRED_KIND) {
+        const payload = (evt as unknown as { event: { payload?: Record<string, unknown> } }).event?.payload ?? {};
+        request = {
+          taskId: (evt as { taskId: string }).taskId,
+          action: (payload.action as RiskConfirmationData['action']) ?? { name: 'unknown' },
+          riskLevel: (payload.riskLevel as string) ?? 'high',
+          reason: (payload.reason as string) ?? '',
+          question: payload.question as string | undefined,
+        };
+      } else if (kind && RISK_RESOLVED_KINDS.has(kind)) {
+        request = null;
+      }
+    }
+    return request;
+  }, [events]);
 
   useEffect(() => {
-    if (lastEvent?.kind === 'risk_confirmation_required') {
-      setPendingConfirmation(lastEvent as unknown as RiskConfirmationData);
-      setIsOpen(true);
-    }
-  }, [lastEvent]);
-
-  const handleConfirm = async () => {
-    if (!taskId) return;
-
-    try {
-      await apiClient.post(`/tasks/${taskId}/confirm`, {
-        confirmed: true,
-        reason: 'User confirmed risk operation',
-      });
-      setIsOpen(false);
-      setPendingConfirmation(null);
-      onClose();
-    } catch (error) {
-      console.error('Failed to confirm:', error);
-    }
-  };
-
-  const handleDeny = async () => {
-    if (!taskId) return;
-
-    try {
-      await apiClient.post(`/tasks/${taskId}/confirm`, {
-        confirmed: false,
-        reason: 'User denied risk operation',
-      });
-      setIsOpen(false);
-      setPendingConfirmation(null);
-      onClose();
-    } catch (error) {
-      console.error('Failed to deny:', error);
-    }
-  };
+    setPending(latestRequest);
+  }, [latestRequest]);
 
   const getRiskLevelColor = (level: string) => {
     switch (level) {
@@ -86,20 +73,20 @@ export function RiskConfirmDialog({ taskId, onClose }: RiskConfirmDialogProps) {
     }
   };
 
-  if (!pendingConfirmation) return null;
+  if (!pending) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={true}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span>⚠️ Risk Confirmation Required</span>
-            <span className={`text-xs px-2 py-1 rounded ${getRiskLevelColor(pendingConfirmation.riskLevel)}`}>
-              {pendingConfirmation.riskLevel.toUpperCase()}
+            <span>⚠️ Risk Confirmation Pending</span>
+            <span className={`text-xs px-2 py-1 rounded ${getRiskLevelColor(pending.riskLevel)}`}>
+              {pending.riskLevel.toUpperCase()}
             </span>
           </DialogTitle>
           <DialogDescription>
-            A potentially risky operation is requesting confirmation.
+            Risk confirmation must be completed in the chat window.
           </DialogDescription>
         </DialogHeader>
 
@@ -109,12 +96,12 @@ export function RiskConfirmDialog({ taskId, onClose }: RiskConfirmDialogProps) {
             <div className="text-sm space-y-1">
               <div>
                 <span className="font-mono bg-muted-foreground/10 px-1 rounded">
-                  {pendingConfirmation.action.name}
+                  {pending.action.name}
                 </span>
               </div>
-              {pendingConfirmation.action.args !== undefined && (
-                <div className="text-xs text-muted-foreground mt-1">
-                  Args: {JSON.stringify(pendingConfirmation.action.args, null, 2)}
+              {pending.action.args !== undefined && (
+                <div className="text-xs text-muted-foreground mt-1 break-words">
+                  Args: {JSON.stringify(pending.action.args)}
                 </div>
               )}
             </div>
@@ -122,26 +109,33 @@ export function RiskConfirmDialog({ taskId, onClose }: RiskConfirmDialogProps) {
 
           <div className="text-sm">
             <div className="font-medium mb-1">Reason:</div>
-            <div className="text-muted-foreground">{pendingConfirmation.reason}</div>
+            <div className="text-muted-foreground">{pending.reason}</div>
           </div>
 
-          {pendingConfirmation.question && (
+          {pending.question && (
             <div className="text-sm">
               <div className="font-medium mb-1">Question:</div>
               <div className="text-muted-foreground italic">
-                &ldquo;{pendingConfirmation.question}&rdquo;
+                &ldquo;{pending.question}&rdquo;
               </div>
             </div>
           )}
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleDeny}>
+          <Button
+            variant="outline"
+            disabled
+            className="cursor-not-allowed"
+            title="Please use the chat window to confirm or cancel"
+          >
             Cancel Operation
           </Button>
           <Button
-            variant={pendingConfirmation.riskLevel === 'destructive' ? 'destructive' : 'default'}
-            onClick={handleConfirm}
+            variant={pending.riskLevel === 'destructive' ? 'destructive' : 'default'}
+            disabled
+            className="cursor-not-allowed"
+            title="Please use the chat window to confirm this action"
           >
             Confirm & Execute
           </Button>
@@ -152,15 +146,28 @@ export function RiskConfirmDialog({ taskId, onClose }: RiskConfirmDialogProps) {
 }
 
 export function useRiskConfirmation(taskId: string | null) {
-  const [pendingConfirmation, setPendingConfirmation] = useState<RiskConfirmationData | null>(null);
   const { events } = useSse(taskId);
-  const lastEvent = events.at(-1);
+  const [pendingConfirmation, setPendingConfirmation] = useState<RiskConfirmationData | null>(null);
 
   useEffect(() => {
-    if (lastEvent?.kind === 'risk_confirmation_required') {
-      setPendingConfirmation(lastEvent as unknown as RiskConfirmationData);
+    let request: RiskConfirmationData | null = null;
+    for (const evt of events) {
+      const kind = (evt as { kind?: string }).kind;
+      if (kind === RISK_REQUIRED_KIND) {
+        const payload = (evt as unknown as { event: { payload?: Record<string, unknown> } }).event?.payload ?? {};
+        request = {
+          taskId: (evt as { taskId: string }).taskId,
+          action: (payload.action as RiskConfirmationData['action']) ?? { name: 'unknown' },
+          riskLevel: (payload.riskLevel as string) ?? 'high',
+          reason: (payload.reason as string) ?? '',
+          question: payload.question as string | undefined,
+        };
+      } else if (kind && RISK_RESOLVED_KINDS.has(kind)) {
+        request = null;
+      }
     }
-  }, [lastEvent]);
+    setPendingConfirmation(request);
+  }, [events]);
 
   return { pendingConfirmation };
 }

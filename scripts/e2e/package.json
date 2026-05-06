@@ -1,0 +1,22 @@
+{
+  "name": "@cua-lark/e2e-tests",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "pause-resume": "tsx index.ts pause-resume-flow",
+    "risk-confirm": "tsx index.ts risk-confirm-flow",
+    "multi-subscriber": "tsx index.ts multi-subscriber-flow",
+    "run-all": "tsx index.ts pause-resume-flow && tsx index.ts risk-confirm-flow && tsx index.ts multi-subscriber-flow"
+  },
+  "dependencies": {
+    "@types/node-fetch": "^2.6.13",
+    "@types/eventsource": "^1.1.15",
+    "node-fetch": "^3.3.2",
+    "eventsource": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.7.0"
+  }
+}

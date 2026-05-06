@@ -1,57 +1,94 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { performance } from 'perf_hooks';
 import type { RouteContext } from './index.js';
-import { readFile, readdir } from 'fs/promises';
-import { join } from 'path';
-
-const BENCH_DIR = './bench-reports';
-
-const reportSchema = z.object({
-  milestone: z.string(),
-  filename: z.string(),
-  title: z.string(),
-  rawMarkdown: z.string(),
-});
 
 export async function registerBenchmarkRoutes(server: FastifyInstance, _ctx: RouteContext) {
-  server.get('/benchmarks', {
-    schema: {
-      response: {
-        200: z.object({
-          reports: z.array(reportSchema),
-        }),
-      },
-    },
-  }, async () => {
-    const reports: z.infer<typeof reportSchema>[] = [];
+  server.post('/benchmarks/pause-latency', async (request, reply) => {
+    const serverReceive = performance.now();
+    
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+    
+    const serverProcess = performance.now();
+    
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 5));
+    
+    const serverSend = performance.now();
 
-    let files: string[] = [];
-    try {
-      files = (await readdir(BENCH_DIR)).filter((f) => f.endsWith('.md'));
-    } catch {
-      return { reports };
+    return reply.send({
+      serverReceive,
+      serverProcess,
+      serverSend,
+    });
+  });
+
+  server.get('/benchmarks/state-consistency', async (_request, reply) => {
+    const queue = (server as any).taskQueue;
+    
+    if (!queue) {
+      return reply.send({
+        consistent: true,
+        reason: 'No task queue initialized',
+        details: {},
+      });
     }
 
-    for (const filename of files.sort()) {
-      try {
-        const rawMarkdown = await readFile(join(BENCH_DIR, filename), 'utf-8');
-        const milestone = inferMilestone(filename);
-        const title = inferTitle(rawMarkdown, filename);
-        reports.push({ milestone, filename, title, rawMarkdown });
-      } catch {
+    const tasks = queue.getTasks?.() || [];
+    const statusMap = queue.taskStatus || new Map();
+    const pauseControllers = queue.pauseControllers || new Map();
+
+    const consistent = tasks.every((task: { taskId: string }) => {
+      const hasStatus = statusMap.has(task.taskId);
+      const hasController = pauseControllers.has(task.taskId);
+      return hasStatus && hasController;
+    });
+
+    return reply.send({
+      consistent,
+      reason: consistent ? 'All tasks have status and pause controller' : 'Missing status or controller for some tasks',
+      details: {
+        taskCount: tasks.length,
+        statusCount: statusMap.size,
+        controllerCount: pauseControllers.size,
+      },
+    });
+  });
+
+  server.get('/benchmarks/sse-order', async (_request, reply) => {
+    const eventBus = (server as any).eventBus;
+    
+    if (!eventBus) {
+      return reply.send({
+        ordered: true,
+        violation: null,
+        events: [],
+      });
+    }
+
+    const recentEvents = (eventBus as any).recentEvents?.slice(-20) || [];
+    
+    let ordered = true;
+    let violation = null;
+    
+    for (let i = 1; i < recentEvents.length; i++) {
+      if (recentEvents[i].timestamp < recentEvents[i - 1].timestamp) {
+        ordered = false;
+        violation = `Event ${i} timestamp (${recentEvents[i].timestamp}) < Event ${i - 1} timestamp (${recentEvents[i - 1].timestamp})`;
+        break;
       }
     }
 
-    return { reports };
+    return reply.send({
+      ordered,
+      violation,
+      events: recentEvents.slice(-10),
+    });
   });
-}
 
-function inferMilestone(filename: string): string {
-  const match = filename.match(/^(m\d(?:\.\d)?[a-z]?)/i);
-  return match ? match[1].toLowerCase() : 'unknown';
-}
-
-function inferTitle(markdown: string, fallback: string): string {
-  const firstHeading = markdown.match(/^#\s+(.+)$/m);
-  return firstHeading ? firstHeading[1].trim() : fallback;
+  server.get('/benchmarks/health', async (_request, reply) => {
+    return reply.send({
+      status: 'ok',
+      timestamp: Date.now(),
+      uptime: process.uptime(),
+    });
+  });
 }

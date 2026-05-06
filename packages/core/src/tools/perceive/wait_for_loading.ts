@@ -76,7 +76,7 @@ export const waitForLoadingTool: Tool<{
     elementDescription: z.string().optional(),
   }),
   async execute(
-    ctx: HarnessContext,
+    ctx: HarnessContext & { pauseSignal?: AbortSignal },
     args: { timeoutSec?: number; signal: WaitSignal; elementDescription?: string }
   ): Promise<ToolResult<WaitForLoadingResult>> {
     const startTime = Date.now();
@@ -91,6 +91,19 @@ export const waitForLoadingTool: Tool<{
     }
 
     while (Date.now() - startTime < timeoutMs) {
+      if (ctx.pauseSignal?.aborted) {
+        const waitedMs = Date.now() - startTime;
+        return {
+          success: true,
+          data: {
+            signal: args.signal,
+            satisfied: false,
+            waitedMs,
+          },
+          observation: `Loading interrupted after ${waitedMs}ms (signal: ${args.signal})`,
+        };
+      }
+
       let satisfied = false;
 
       switch (args.signal) {

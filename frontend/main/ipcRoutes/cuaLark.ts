@@ -13,6 +13,7 @@
  */
 import { OpenAI } from 'openai';
 import ElectronStore from 'electron-store';
+import { shell } from 'electron';
 import { initIpc } from '@ui-tars/electron-ipc/main';
 import { logger } from '../logger';
 import { SettingStore } from '../store/setting';
@@ -72,7 +73,48 @@ function getLlmClient(): { openai: OpenAI; model: string } | null {
 
 /* ===== 路由实现 ===== */
 
+// Whitelist for openExternal to prevent the renderer from launching arbitrary
+// URLs / file:// paths. Add new origins here when adding new buttons.
+const OPEN_EXTERNAL_ALLOWED_PREFIXES: ReadonlyArray<string> = [
+  'http://127.0.0.1:5174',           // dashboard dev (Plan M6.3.1)
+  'http://localhost:5174',
+  'http://127.0.0.1:7878/dashboard', // dashboard prod (@fastify/static)
+  'http://localhost:7878/dashboard',
+  'https://github.com/anthropics/',  // docs / issue links
+];
+
+function isOpenExternalAllowed(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return OPEN_EXTERNAL_ALLOWED_PREFIXES.some((p) => url.startsWith(p));
+  } catch {
+    return false;
+  }
+}
+
 export const cuaLarkRoute = t.router({
+  /**
+   * openExternal · open a whitelisted URL (e.g. dashboard) in the system browser.
+   * Renderer cannot reach `shell.openExternal` directly — this IPC bridges it.
+   */
+  openExternal: t.procedure
+    .input<{ url: string }>()
+    .handle(async ({ input }): Promise<{ ok: boolean; reason?: string }> => {
+      const url = input?.url;
+      if (!url || !isOpenExternalAllowed(url)) {
+        logger.warn('[cuaLark.openExternal] blocked URL:', url);
+        return { ok: false, reason: 'url_not_allowed' };
+      }
+      try {
+        await shell.openExternal(url);
+        return { ok: true };
+      } catch (err) {
+        logger.warn('[cuaLark.openExternal] failed:', err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }),
+
   /**
    * answerQuestion · 轻量 LLM Q&A（不触发 GUI）
    * 直连 SettingStore 配置的 VLM 端点的 chat.completions（不走 cua-lark backend）。

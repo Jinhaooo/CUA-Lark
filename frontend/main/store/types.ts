@@ -33,6 +33,7 @@ export type AppState = {
   abortController: AbortController | null;
   thinking: boolean;
   browserAvailable: boolean;
+  currentTaskId: string | null;
 };
 
 export enum VlmProvider {

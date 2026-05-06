@@ -42,6 +42,15 @@ export async function registerConfirmRoutes(server: FastifyInstance, ctx: RouteC
       source: 'user',
     });
 
+    ctx.eventBus.emit({
+      kind: 'risk_confirmed',
+      taskId,
+      confirmed,
+      source: 'widget',
+      reason,
+      confirmedAt: Date.now(),
+    });
+
     return { received: true };
   });
 }

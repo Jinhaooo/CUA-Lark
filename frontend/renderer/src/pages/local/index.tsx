@@ -1,45 +1,31 @@
-import { MessageCirclePlus, Library } from 'lucide-react';
+import { MessageCirclePlus, LayoutDashboard } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card } from '@renderer/components/ui/card';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@renderer/components/ui/tabs';
 import { Button } from '@renderer/components/ui/button';
-import { SidebarTrigger, useSidebar } from '@renderer/components/ui/sidebar';
 import { NavHeader } from '@renderer/components/Detail/NavHeader';
 import { ScrollArea } from '@renderer/components/ui/scroll-area';
 
 import { useStore } from '@renderer/hooks/useStore';
 import { useSession } from '@renderer/hooks/useSession';
+import { api } from '../../api';
 import Prompts from '../../components/Prompts';
 import { IMAGE_PLACEHOLDER } from '@ui-tars/shared/constants';
 import {
   AssistantTextMessage,
   ErrorMessage,
   HumanTextMessage,
-  LoadingText,
   RunningIndicator,
   ScreenshotMessage,
 } from '../../components/RunMessages/Messages';
 import ThoughtChain from '../../components/ThoughtChain';
-import { api } from '../../api';
-import ImageGallery from '../../components/ImageGallery';
 import { PredictionParsed, StatusEnum } from '@ui-tars/shared/types';
 import { RouterState } from '../../typings';
 import ChatInput from '../../components/ChatInput';
 import { useRunAgent } from '@renderer/hooks/useRunAgent';
 import { NavDialog } from '../../components/AlertDialog/navDialog';
-import { SkillLibraryDialog } from '@renderer/components/Skills/SkillLibraryDialog';
-import {
-  checkVLMSettings,
-  LocalSettingsDialog,
-} from '../../components/Settings/local';
-import { sleep } from '@ui-tars/shared/utils';
+import { RiskConfirmDialog } from '../../components/RiskConfirmDialog';
 
 const getFinishedContent = (predictionParsed?: PredictionParsed[]) =>
   predictionParsed?.find(
@@ -50,14 +36,16 @@ const getFinishedContent = (predictionParsed?: PredictionParsed[]) =>
   )?.action_inputs?.content as string | undefined;
 
 const LocalOperator = () => {
-  const state = useLocation().state as RouterState;
+  // useLocation().state is null when this page is mounted via direct nav
+  // (e.g. history back from /dashboard). Default to an empty RouterState so
+  // downstream `state.sessionId` access doesn't crash the renderer.
+  const state = (useLocation().state as RouterState | null) ?? ({} as RouterState);
   const navigate = useNavigate();
-  const { setOpen } = useSidebar();
 
   const { status, messages = [], thinking, errorMsg } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const suggestions: string[] = [];
-  const [selectImg, setSelectImg] = useState<number | undefined>(undefined);
+  const [, setSelectImg] = useState<number | undefined>(undefined);
   const [initId, setInitId] = useState('');
   const {
     currentSessionId,
@@ -70,8 +58,6 @@ const LocalOperator = () => {
     null,
   );
   const [isNavDialogOpen, setNavDialogOpen] = useState(false);
-  const [localOpen, setLocalOpen] = useState(false);
-  const [skillOpen, setSkillOpen] = useState(false);
   const { run } = useRunAgent();
   const autoRunStartedRef = useRef(false);
 
@@ -83,7 +69,6 @@ const LocalOperator = () => {
       }
     };
     update();
-    setOpen(false);
   }, [state.sessionId]);
 
   useEffect(() => {
@@ -195,7 +180,7 @@ const LocalOperator = () => {
     } else {
       onNewChat();
     }
-  }, [needsConfirm]);
+  }, [needsConfirm, onNewChat]);
 
   const handleBack = useCallback(() => {
     if (needsConfirm) {
@@ -204,12 +189,9 @@ const LocalOperator = () => {
     } else {
       onBack();
     }
-  }, [needsConfirm]);
+  }, [needsConfirm, onBack]);
 
   const onConfirm = useCallback(async () => {
-    await api.stopRun();
-    await api.clearHistory();
-
     if (pendingAction === 'newChat') {
       await onNewChat();
     } else if (pendingAction === 'back') {
@@ -224,26 +206,15 @@ const LocalOperator = () => {
     setNavDialogOpen(false);
   }, []);
 
-  const handleLocalSettingsSubmit = async () => {
-    setLocalOpen(false);
-
-    await sleep(200);
-  };
-
-  const handleLocalSettingsClose = () => {
-    setLocalOpen(false);
-  };
-
   const checkVLM = async () => {
-    const hasVLM = await checkVLMSettings();
-
-    if (hasVLM) {
-      return true;
-    } else {
-      setLocalOpen(true);
-      return false;
-    }
+    return true;
   };
+
+  const handleOpenDashboard = useCallback(() => {
+    // Embedded view at /dashboard route — iframes the dashboard SPA so
+    // execution info syncs in-place without leaving the app.
+    navigate('/dashboard');
+  }, [navigate]);
 
   const renderChatList = () => {
     return (
@@ -306,30 +277,27 @@ const LocalOperator = () => {
   };
 
   return (
-    <div className="future-shell future-static flex flex-col w-full h-full">
-      <NavHeader onBack={handleBack}></NavHeader>
-      <div className="px-5 pb-5 flex flex-1 gap-5">
-        <Card className="future-panel future-static flex-1 basis-2/5 px-0 py-4 gap-4 h-[calc(100vh-76px)]">
-          <div className="flex items-center justify-between w-full px-4">
-            <SidebarTrigger
-              variant="secondary"
-              className="size-8"
-            ></SidebarTrigger>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setSkillOpen(true)}
-              >
-                <Library className="mr-2 h-4 w-4" />
-                技能库
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleNewChat}>
-                <MessageCirclePlus />
-                新对话
-              </Button>
-            </div>
+    <div className="flex flex-col w-full h-full">
+      <NavHeader onBack={handleBack}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleOpenDashboard}
+          title="在浏览器打开 Dashboard（trace / failure cluster / few-shot 视图）"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Dashboard
+        </Button>
+      </NavHeader>
+      <div className="px-4 pb-4 flex flex-1">
+        <Card className="flex-1 px-0 py-3 gap-3 h-[calc(100vh-76px)]">
+          <div className="flex items-center justify-end w-full px-4">
+            <Button variant="outline" size="sm" onClick={handleNewChat}>
+              <MessageCirclePlus />
+              新对话
+            </Button>
           </div>
+          <RiskConfirmDialog taskId={state.sessionId} />
           {renderChatList()}
           <ChatInput
             disabled={false}
@@ -338,30 +306,11 @@ const LocalOperator = () => {
             checkBeforeRun={checkVLM}
           />
         </Card>
-        <Card className="future-panel future-static flex-1 basis-3/5 p-3 h-[calc(100vh-76px)]">
-          <Tabs defaultValue="screenshot" className="flex-1">
-            <TabsList>
-              <TabsTrigger value="screenshot">截图</TabsTrigger>
-            </TabsList>
-            <TabsContent value="screenshot">
-              <ImageGallery
-                messages={chatMessages}
-                selectImgIndex={selectImg}
-              />
-            </TabsContent>
-          </Tabs>
-        </Card>
       </div>
       <NavDialog
         open={isNavDialogOpen}
         onOpenChange={onCancel}
         onConfirm={onConfirm}
-      />
-      <SkillLibraryDialog open={skillOpen} onOpenChange={setSkillOpen} />
-      <LocalSettingsDialog
-        isOpen={localOpen}
-        onSubmit={handleLocalSettingsSubmit}
-        onClose={handleLocalSettingsClose}
       />
     </div>
   );

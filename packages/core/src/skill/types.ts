@@ -30,6 +30,10 @@ export interface Skill<P = unknown, R = unknown> {
   verifyDifficulty?: VerifyDifficulty;
   verifyStrategy?: VerifyStrategy;
   sideEffects?: SideEffectSpec;
+  /** Markdown body of SKILL.md, surfaced to the ReAct system prompt. */
+  systemPrompt?: string;
+  /** Optional explicit success criteria. */
+  finishCriteria?: string;
 }
 
 export interface ImSideEffects {

@@ -22,6 +22,10 @@ export const vlmBaseUrl = process.env.VLM_BASE_URL;
 export const vlmApiKey = process.env.VLM_API_KEY;
 export const vlmModelName = process.env.VLM_MODEL_NAME;
 
+// CUA-Lark backend HTTP server (Fastify). Used by escapeStop/pause, sseClient, etc.
+// Override via CUA_SERVER_URL env var; default matches packages/server defaults.
+export const serverUrl = process.env.CUA_SERVER_URL || 'http://127.0.0.1:7878';
+
 const { platform } = process;
 export const isMacOS = platform === 'darwin';
 

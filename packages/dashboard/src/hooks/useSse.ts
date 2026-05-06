@@ -83,6 +83,11 @@ export function useSse(taskId: string | null) {
       'self_healing_attempted',
       'self_healing_succeeded',
       'self_healing_skipped',
+      // M6 takeover lifecycle events.
+      'task_paused',
+      'task_resumed',
+      'takeover_armed',
+      'risk_confirmed',
     ]) {
       eventSource.addEventListener(eventName, (event) => {
         try {

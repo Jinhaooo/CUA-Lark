@@ -13,10 +13,37 @@ import { loadRiskGateConfigFromYaml, toRiskGateConfig } from '../tools/RiskGateC
 import { PromptBuilder } from './PromptBuilder.js';
 
 /**
+ * Escape raw control chars (\n \r \t) that appear *inside* string literals.
+ * Stricter VLM outputs are valid JSON; GLM-5V emits pretty-printed multi-line
+ * strings that JSON.parse rejects. Walk the text, track string-vs-structural
+ * context, and replace literal control chars with their escape sequences only
+ * inside strings.
+ */
+function sanitizeJsonStringNewlines(s: string): string {
+  let out = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (escape) { out += c; escape = false; continue; }
+    if (c === '\\') { out += c; escape = true; continue; }
+    if (c === '"') { inString = !inString; out += c; continue; }
+    if (inString) {
+      if (c === '\n') { out += '\\n'; continue; }
+      if (c === '\r') { out += '\\r'; continue; }
+      if (c === '\t') { out += '\\t'; continue; }
+    }
+    out += c;
+  }
+  return out;
+}
+
+/**
  * Tolerant JSON object extraction. Some VLM endpoints (GLM-5V, certain
- * Qwen versions in non-strict mode) wrap the JSON in ```json fences or
- * prefix it with prose like "Here is the response:". JSON.parse rejects
- * those; this helper peels them off before retrying.
+ * Qwen versions in non-strict mode) wrap the JSON in ```json fences,
+ * prefix it with prose like "Here is the response:", or pretty-print it
+ * with raw newlines inside string values. This helper peels each layer
+ * off before retrying.
  */
 function extractJsonObject(text: string): unknown {
   try { return JSON.parse(text); } catch {}
@@ -25,13 +52,25 @@ function extractJsonObject(text: string): unknown {
 
   const fence = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fence && fence[1]) {
-    try { return JSON.parse(fence[1].trim()); } catch {}
+    const inner = fence[1].trim();
+    try { return JSON.parse(inner); } catch {}
+    try { return JSON.parse(sanitizeJsonStringNewlines(inner)); } catch {}
   }
 
   const first = trimmed.indexOf('{');
   const last = trimmed.lastIndexOf('}');
   if (first >= 0 && last > first) {
-    try { return JSON.parse(trimmed.slice(first, last + 1)); } catch {}
+    const slice = trimmed.slice(first, last + 1);
+    try { return JSON.parse(slice); } catch {}
+    try { return JSON.parse(sanitizeJsonStringNewlines(slice)); } catch {}
+  }
+
+  // Last resort: sanitize the whole text and retry brace extraction.
+  const sanitized = sanitizeJsonStringNewlines(trimmed);
+  const sFirst = sanitized.indexOf('{');
+  const sLast = sanitized.lastIndexOf('}');
+  if (sFirst >= 0 && sLast > sFirst) {
+    try { return JSON.parse(sanitized.slice(sFirst, sLast + 1)); } catch {}
   }
 
   throw new SyntaxError('Could not extract JSON object from model response');
@@ -213,12 +252,12 @@ export class HarnessLoop {
             signal: requestSignal.signal,
           };
 
+          // Some VLMs (GLM-5V, deepseek-r1) emit the entire response — including
+          // the final JSON answer — inside `reasoning_content`, leaving `content`
+          // empty. Buffer reasoning separately; if `content` is empty at the end
+          // of the stream we fall back to it before parsing.
+          let reasoningBuffer = '';
           if (typeof ctx.model.chatVisionStream === 'function') {
-            // Some VLMs (GLM-5V, deepseek-r1) emit the entire response — including
-            // the final JSON answer — inside `reasoning_content`, leaving `content`
-            // empty. Buffer reasoning separately; if `content` is empty at the end
-            // of the stream we fall back to it before parsing.
-            let reasoningBuffer = '';
             try {
               for await (const chunk of ctx.model.chatVisionStream(visionRequest)) {
                 if (requestSignal.signal.aborted) {
@@ -290,7 +329,10 @@ export class HarnessLoop {
           } catch {
             // Capture raw response for debugging — parse failures are otherwise
             // invisible (thought_complete is emitted only on the success path).
-            const sample = thought.length > 600 ? thought.slice(0, 600) + '…' : thought;
+            // When BOTH content and reasoning are empty, sample stays "" — that
+            // is the smoking gun for "VLM returned nothing parseable at all".
+            const combined = thought || reasoningBuffer;
+            const sample = combined.length > 600 ? combined.slice(0, 600) + '…' : combined;
             this.emit({
               kind: 'model_request_finished',
               taskId: ctx.testRunId,
@@ -300,7 +342,9 @@ export class HarnessLoop {
               success: false,
               reason: 'invalid_json',
               rawSample: sample,
-            } as any);
+              contentChars: thought.length,
+              reasoningChars: reasoningBuffer.length,
+            });
             if (retry === 1) {
               throw new Error('Invalid JSON response after retry');
             }

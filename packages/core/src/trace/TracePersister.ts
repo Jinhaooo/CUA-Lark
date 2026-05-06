@@ -119,6 +119,9 @@ export class TracePersister {
             attempt: event.attempt,
             durationMs: event.durationMs,
             reason: event.reason,
+            rawSample: event.rawSample,
+            contentChars: event.contentChars,
+            reasoningChars: event.reasoningChars,
           },
         };
       case 'thought_complete':
@@ -301,6 +304,61 @@ export class TracePersister {
           payload: {
             reason: event.reason,
             skipCause: event.skipCause,
+          },
+        };
+      case 'task_paused':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'task_paused' as any,
+          name: 'task_paused',
+          status: 'running',
+          started_at: event.pausedAt,
+          ended_at: event.pausedAt,
+          payload: {
+            pausedAtIteration: event.pausedAtIteration,
+            reason: event.reason,
+          },
+        };
+      case 'task_resumed':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'task_resumed' as any,
+          name: 'task_resumed',
+          status: 'running',
+          started_at: event.resumedAt,
+          ended_at: event.resumedAt,
+          payload: {
+            resumedAtIteration: event.resumedAtIteration,
+          },
+        };
+      case 'takeover_armed':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'takeover_armed' as any,
+          name: 'takeover_armed',
+          status: 'running',
+          started_at: event.armedAt,
+          ended_at: event.armedAt,
+          payload: {
+            hotkey: event.hotkey,
+          },
+        };
+      case 'risk_confirmed':
+        return {
+          id: ulid(),
+          test_run_id: event.taskId,
+          kind: 'risk_confirmed' as any,
+          name: 'risk_confirmed',
+          status: event.confirmed ? 'passed' : 'failed',
+          started_at: event.confirmedAt,
+          ended_at: event.confirmedAt,
+          payload: {
+            confirmed: event.confirmed,
+            source: event.source,
+            reason: event.reason,
           },
         };
       default:

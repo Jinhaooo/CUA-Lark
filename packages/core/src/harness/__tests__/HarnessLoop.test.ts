@@ -115,6 +115,25 @@ describe('HarnessLoop', () => {
     expect(result.finishedReason).toBe('fenced ok');
   });
 
+  it('parses pretty-printed JSON with raw newlines inside string values (GLM-5V)', async () => {
+    const registry = new ToolRegistry();
+    const loop = new HarnessLoop(registry);
+    // GLM-5V emits multi-line strings without \n escapes — strict JSON.parse rejects.
+    const messy = `{
+  "thought": "<observation>
+当前显示桌面，飞书在后台。
+</observation>
+<plan>
+调用 finished
+</plan>",
+  "tool_call": {"name": "finished", "args": {"success": true, "reason": "messy ok"}}
+}`;
+    const ctx = createContext([messy]);
+    const result = await loop.run(createTemplate({ toolWhitelist: ['finished'] }), ctx);
+    expect(result.success).toBe(true);
+    expect(result.finishedReason).toBe('messy ok');
+  });
+
   it('parses model responses with leading prose (extract first/last brace)', async () => {
     const registry = new ToolRegistry();
     const loop = new HarnessLoop(registry);

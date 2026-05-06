@@ -1,13 +1,19 @@
 import { EventEmitter } from 'events';
 
+export type PauseReason = 'user_hotkey' | 'user_button' | 'user_dashboard';
+
 export type HarnessStreamEvent =
   | { kind: 'task_started'; taskId: string; instruction: string; routedSkill: string; startedAt: number }
   | { kind: 'task_finished'; taskId: string; success: boolean; reason: string; durationMs: number; totalTokens: number }
   | { kind: 'task_failed'; taskId: string; error: { kind: string; message: string } }
   | { kind: 'task_cancelled'; taskId: string }
+  | { kind: 'task_paused'; taskId: string; pausedAtIteration: number; reason: PauseReason; pausedAt: number }
+  | { kind: 'task_resumed'; taskId: string; resumedAt: number; resumedAtIteration: number }
+  | { kind: 'takeover_armed'; taskId: string; hotkey: string; armedAt: number }
+  | { kind: 'risk_confirmed'; taskId: string; confirmed: boolean; source: 'widget' | 'auto_timeout' | 'auto_approve'; reason?: string; confirmedAt: number }
   | { kind: 'iteration_started'; taskId: string; iteration: number; screenshotPath: string }
   | { kind: 'model_request_started'; taskId: string; iteration: number; attempt: number; timeoutMs: number }
-  | { kind: 'model_request_finished'; taskId: string; iteration: number; attempt: number; durationMs: number; success: boolean; reason?: string }
+  | { kind: 'model_request_finished'; taskId: string; iteration: number; attempt: number; durationMs: number; success: boolean; reason?: string; rawSample?: string; contentChars?: number; reasoningChars?: number }
   | { kind: 'thought_chunk'; taskId: string; iteration: number; delta: string }
   | { kind: 'thought_complete'; taskId: string; iteration: number; full: string; tokens: number }
   | { kind: 'thought_reset'; taskId: string; iteration: number; reason: 'stream_interrupted' }

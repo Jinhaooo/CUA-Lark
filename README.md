@@ -59,32 +59,6 @@ scripts/              guard checks, trace migration, smoke tests, real E2E
 - Lark or Feishu desktop client installed and running
 - A VLM endpoint compatible with the UI-TARS SDK / OpenAI-style API
 
-### Enable a11y for UIA (Windows, optional but recommended)
-
-Lark/飞书 桌面客户端是 Electron 应用，默认**不向 Windows UI Automation 暴露内部控件树**。在 a11y 启用前，`uia_find` / `uia_find_all` / `verify_a11y` 三个工具拿不到任何控件——所以服务器启动时会探测 a11y 状态，若未启用则**自动从 agent 的工具白名单里剔除这三个工具**，避免 agent 浪费迭代尝试它们。
-
-要解锁 UIA 路径，**在第一次启动飞书前**做一次：
-
-1. `Win + Ctrl + Enter` 打开 Windows 旁白（Narrator），让它说几秒话
-2. 再次 `Win + Ctrl + Enter` 关闭旁白
-3. **重启飞书**
-4. 重启 cua-lark 后端，看启动日志：
-
-```
-[server] UiaClient initialized: enabled=true nodeCount=328
-```
-
-`enabled=true` 表示 UIA 树已展开（约 328 个节点、47 个 Button、12 个 Edit），UIA 工具自动重新启用。该 a11y 状态系统级持久化，**之后即使关闭旁白、重启飞书、重启电脑都仍生效**——只需做一次。
-
-不做这一步也能用，OCR + VLM 已覆盖所有定位场景，只是少了一条更快更精确的降级链。
-
-Enable pnpm through Corepack if needed:
-
-```powershell
-corepack enable
-corepack prepare pnpm@9.0.0 --activate
-```
-
 ## Installation
 
 ```powershell
